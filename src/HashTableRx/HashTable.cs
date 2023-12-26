@@ -14,9 +14,7 @@ namespace CP.Collections
     /// Represents a collection of key/value pairs that are organized based on the hash code of the key.
     /// </summary>
     [Serializable]
-#pragma warning disable CA2229 // Implement serialization constructors
     public class HashTable : Hashtable, IObservable<(string key, object? value)>, ICancelable
-#pragma warning restore CA2229 // Implement serialization constructors
     {
         private readonly SingleAssignmentDisposable _subscription = new();
         private readonly IScheduler _scheduler;
@@ -138,11 +136,8 @@ namespace CP.Collections
         /// </summary>
         /// <param name="key">The index.</param>
         /// <returns>A Observable.</returns>
-        public IObservable<(string key, object? value)> Get(object key)
-        {
-            var result = Observable.Start<object?>(() => this[key], _scheduler);
-            return result.Select(x => (key?.ToString()!, x));
-        }
+        public IObservable<(string key, object? value)> Get(object key) =>
+            Observable.Start(() => this[key], _scheduler).Select(x => (key?.ToString()!, x));
 
         /// <summary>
         /// Removes the element with the specified key from the <see cref="Hashtable"/>.

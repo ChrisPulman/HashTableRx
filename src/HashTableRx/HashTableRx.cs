@@ -27,7 +27,7 @@ namespace CP.Collections
         public HashTableRx(bool useUpperCase)
         {
             UseUpperCase = useUpperCase;
-            Tag = new HashTable();
+            Tag = [];
         }
 
         /// <summary>
@@ -35,7 +35,7 @@ namespace CP.Collections
         /// </summary>
         /// <param name="source">The source.</param>
         public HashTableRx(IObservable<(string key, object? value)> source)
-            : base(source) => Tag = new HashTable();
+            : base(source) => Tag = [];
 
         /// <summary>
         /// Initializes a new instance of the <see cref="HashTableRx"/> class.
@@ -43,7 +43,7 @@ namespace CP.Collections
         /// <param name="info">The Serialization Info.</param>
         /// <param name="context">The Context.</param>
         protected HashTableRx(SerializationInfo info, StreamingContext context) =>
-            Tag = new HashTable();
+            Tag = [];
 
         /// <summary>
         /// Occurs when a property value changes.
@@ -334,7 +334,7 @@ namespace CP.Collections
 
             htrx[true, firstName] ??= new HashTableRx(htrx.UseUpperCase);
 
-            var str = fullName?.Remove(0, checked(fullName.IndexOf(".", StringComparison.Ordinal) + 1));
+            var str = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
             var htRx = htrx;
             var item = htRx[true, firstName];
             var obj = GetFullName(str, ref item!);
@@ -397,7 +397,7 @@ namespace CP.Collections
             }
             else
             {
-                var remainingNames = fullName?.Remove(0, checked(fullName.IndexOf(".", StringComparison.Ordinal) + 1));
+                var remainingNames = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
                 var htRx = htrx;
                 var item = htRx[true, firstName];
                 SetFullName(remainingNames, ref item!, value);
@@ -424,7 +424,7 @@ namespace CP.Collections
                 return base[firstName];
             }
 
-            var remainingNames = fullName?.Remove(0, checked(fullName.IndexOf(".", StringComparison.Ordinal) + 1));
+            var remainingNames = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
             var item = (HashTableRx?)base[firstName];
             var obj = GetFullName(remainingNames, ref item!);
             base[firstName] = item;
@@ -598,7 +598,7 @@ namespace CP.Collections
             {
                 base[firstName] ??= new HashTableRx(Source!) { UseUpperCase = UseUpperCase };
 
-                var str = fullName?.Remove(0, checked(fullName.IndexOf(".", StringComparison.Ordinal) + 1));
+                var str = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
                 var item = (HashTableRx?)base[firstName];
                 SetFullName(str, ref item!, value);
                 base[firstName] = item;
