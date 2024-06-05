@@ -1,4 +1,3 @@
-﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.3.32922.545
@@ -18,6 +17,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionConfig", "SolutionC
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "_build", "..\build\_build.csproj", "{5A3634B0-A15E-4B5D-8367-7D9FD0EACEE2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HashTableRx.Tests", "HashTableRx.Tests\HashTableRx.Tests.csproj", "{1DF2E1C4-3A84-4A32-A11C-0FD053D22696}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -31,6 +32,12 @@ Global
 		{0B3BCECD-D330-4704-82B1-83EEB8C9A808}.PreRelease|Any CPU.Build.0 = PreRelease|Any CPU
 		{0B3BCECD-D330-4704-82B1-83EEB8C9A808}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0B3BCECD-D330-4704-82B1-83EEB8C9A808}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1DF2E1C4-3A84-4A32-A11C-0FD053D22696}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1DF2E1C4-3A84-4A32-A11C-0FD053D22696}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1DF2E1C4-3A84-4A32-A11C-0FD053D22696}.PreRelease|Any CPU.ActiveCfg = PreRelease|Any CPU
+		{1DF2E1C4-3A84-4A32-A11C-0FD053D22696}.PreRelease|Any CPU.Build.0 = PreRelease|Any CPU
+		{1DF2E1C4-3A84-4A32-A11C-0FD053D22696}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1DF2E1C4-3A84-4A32-A11C-0FD053D22696}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5A3634B0-A15E-4B5D-8367-7D9FD0EACEE2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5A3634B0-A15E-4B5D-8367-7D9FD0EACEE2}.PreRelease|Any CPU.ActiveCfg = Release|Any CPU
 		{5A3634B0-A15E-4B5D-8367-7D9FD0EACEE2}.PreRelease|Any CPU.Build.0 = Release|Any CPU

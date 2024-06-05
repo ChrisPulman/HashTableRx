@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Chris Pulman. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Collections;
 using System.ComponentModel;
 using System.Reactive.Disposables;
 
@@ -11,7 +12,8 @@ namespace CP.Collections
     /// </summary>
     /// <seealso cref="INotifyPropertyChanged"/>
     /// <seealso cref="INotifyPropertyChanging"/>
-    public interface IHashTableRx : INotifyPropertyChanged, INotifyPropertyChanging, ICancelable
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1710:Identifiers should have correct suffix", Justification = "By design.")]
+    public interface IHashTableRx : ICollection, INotifyPropertyChanged, INotifyPropertyChanging, ICancelable
     {
         /// <summary>
         /// Gets or sets a value indicating whether this instance is TwinCat 3.
@@ -70,13 +72,5 @@ namespace CP.Collections
         /// <param name="searchAll">if set to <c>true</c> [search all].</param>
         /// <returns><c>true</c> if the specified key contains key; otherwise, <c>false</c>.</returns>
         bool ContainsKey(object key, bool searchAll);
-
-        /// <summary>
-        /// Observes the specified variable.
-        /// </summary>
-        /// <typeparam name="T">the type.</typeparam>
-        /// <param name="variable">The variable.</param>
-        /// <returns>An IObservable of T.</returns>
-        IObservable<T?> Observe<T>(string variable);
     }
 }

@@ -17,8 +17,8 @@ namespace CP.Collections
     [Serializable]
     public class HashTableRx : HashTable, IHashTableRx
     {
-        private const string PropertyInfo = "PropertyInfo";
-        private const string FieldInfo = "FieldInfo";
+        private const string PropertyInfo = nameof(PropertyInfo);
+        private const string FieldInfo = nameof(FieldInfo);
 
         /// <summary>
         /// Initializes a new instance of the <see cref="HashTableRx" /> class.
@@ -42,6 +42,7 @@ namespace CP.Collections
         /// </summary>
         /// <param name="info">The Serialization Info.</param>
         /// <param name="context">The Context.</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1231:Make parameter ref read-only", Justification = "not required.")]
         protected HashTableRx(SerializationInfo info, StreamingContext context) =>
             Tag = [];
 
@@ -84,14 +85,7 @@ namespace CP.Collections
         public object? this[string fullName]
         {
             get => GetFullName(fullName);
-
-            set
-            {
-                if (value != null)
-                {
-                    SetFullName(fullName, value);
-                }
-            }
+            set => SetFullName(fullName, value);
         }
 
         /// <summary>
@@ -129,6 +123,7 @@ namespace CP.Collections
         /// <returns>
         /// A reactive Hash Table.
         /// </returns>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1163:Unused parameter", Justification = "intended alternate")]
         private HashTableRx? this[bool unused, object? key]
         {
             get => (HashTableRx?)this[key!] ?? new HashTableRx(UseUpperCase);
@@ -142,6 +137,7 @@ namespace CP.Collections
         /// <param name="key">The key.</param>
         /// <param name="isEnd">if set to <c>true</c> [is end].</param>
         /// <returns>An object.</returns>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1163:Unused parameter", Justification = "intended alternate")]
         private object? this[object? key, bool isEnd]
         {
             get => key == null ? null : this[key];
@@ -178,30 +174,12 @@ namespace CP.Collections
         public bool ContainsKey(object key, bool searchAll) => searchAll ? ContainsKey(key) || HtContainsKey(key, Keys) : ContainsKey(key);
 
         /// <summary>
-        /// Get value of fullName called on scheduler, IObservable length is one.
-        /// </summary>
-        /// <typeparam name="T">The type.</typeparam>
-        /// <param name="variable">The index.</param>
-        /// <returns>A Observable.</returns>
-        public IObservable<T?> Observe<T>(string variable)
-        {
-            if (UseUpperCase)
-            {
-                variable = variable?.ToUpper()!;
-            }
-
-            return Subject.Where(x => (UseUpperCase ? x.key.ToUpper() : x.key) == variable).Select(x => (T?)x.value).DistinctUntilChanged().Publish().RefCount();
-        }
-
-        /// <summary>
         /// Gets the by reflection.
         /// </summary>
         /// <param name="htrx">The Reactive Hash Table.</param>
         /// <returns>An object.</returns>
         private static object? GetByReflection(ref HashTableRx htrx)
         {
-            IEnumerator? propertyEnumerator = null;
-            IEnumerator? fieldEnumerator = null;
             if (htrx.Tag?.Count == 0)
             {
                 return null;
@@ -212,10 +190,8 @@ namespace CP.Collections
             {
                 if (htrx.Tag?[PropertyInfo] != null)
                 {
-                    propertyEnumerator = ((IEnumerable?)htrx.Tag[PropertyInfo]!).GetEnumerator();
-                    while (propertyEnumerator.MoveNext())
+                    foreach (PropertyInfo propertyInfo in (IEnumerable?)htrx.Tag[PropertyInfo]!)
                     {
-                        var propertyInfo = (PropertyInfo)propertyEnumerator.Current;
                         if (propertyInfo?.PropertyType?.IsPrimativeArray() == true)
                         {
                             propertyInfo?.SetValue(data, htrx[propertyInfo.Name, true], null);
@@ -223,12 +199,8 @@ namespace CP.Collections
                     }
                 }
             }
-            finally
+            catch
             {
-                if (propertyEnumerator is IDisposable)
-                {
-                    (propertyEnumerator as IDisposable)?.Dispose();
-                }
             }
 
             if (htrx.Tag?[FieldInfo] != null)
@@ -237,10 +209,8 @@ namespace CP.Collections
                 {
                     if (htrx.Tag[FieldInfo] != null)
                     {
-                        fieldEnumerator = ((IEnumerable?)htrx.Tag[FieldInfo]!).GetEnumerator();
-                        while (fieldEnumerator.MoveNext())
+                        foreach (FieldInfo fieldInfo in (IEnumerable?)htrx.Tag[FieldInfo]!)
                         {
-                            var fieldInfo = (FieldInfo)fieldEnumerator.Current;
                             if (fieldInfo?.FieldType?.IsPrimativeArray() == true)
                             {
                                 fieldInfo?.SetValue(data, htrx[fieldInfo.Name, true]);
@@ -257,12 +227,8 @@ namespace CP.Collections
                         }
                     }
                 }
-                finally
+                catch
                 {
-                    if (fieldEnumerator is IDisposable)
-                    {
-                        (fieldEnumerator as IDisposable)?.Dispose();
-                    }
                 }
             }
 
@@ -332,7 +298,7 @@ namespace CP.Collections
                 return htrx[firstName, true];
             }
 
-            htrx[true, firstName] ??= new HashTableRx(htrx.UseUpperCase);
+            htrx[true, firstName] ??= new(htrx.UseUpperCase);
 
             var str = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
             var htRx = htrx;
@@ -350,30 +316,21 @@ namespace CP.Collections
         /// <returns>A Boolean.</returns>
         private static bool HtContainsKey(object key, IEnumerable hashTableBase)
         {
-            IEnumerator? enumerator = null;
             try
             {
-                enumerator = hashTableBase.GetEnumerator();
-                while (enumerator.MoveNext())
+                foreach (HashTable ht in hashTableBase)
                 {
-                    var current = (HashTable)enumerator.Current;
-                    if (current?.ContainsKey(key) == false && !HtContainsKey(key, current.Values))
+                    if (ht.ContainsKey(key))
                     {
-                        continue;
+                        return true;
                     }
-
-                    return true;
                 }
-
-                return false;
             }
-            finally
+            catch
             {
-                if (enumerator is IDisposable)
-                {
-                    (enumerator as IDisposable)?.Dispose();
-                }
             }
+
+            return false;
         }
 
         /// <summary>
@@ -438,8 +395,6 @@ namespace CP.Collections
         /// <param name="value">The value.</param>
         private void SetByReflection(ref HashTableRx htrx, object value)
         {
-            IEnumerator? propertyEnumerator = null;
-            IEnumerator? fieldEnumerator = null;
             if (value == null)
             {
                 return;
@@ -452,10 +407,8 @@ namespace CP.Collections
             {
                 if (htrx.Tag.Count > 0 && htrx.Tag[PropertyInfo] != null)
                 {
-                    propertyEnumerator = ((IEnumerable?)htrx.Tag[PropertyInfo]!).GetEnumerator();
-                    while (propertyEnumerator.MoveNext())
+                    foreach (PropertyInfo propertyInfo in (IEnumerable?)htrx.Tag[PropertyInfo]!)
                     {
-                        var propertyInfo = (PropertyInfo)propertyEnumerator.Current;
                         var name = propertyInfo.Name;
                         if (propertyInfo.PropertyType?.IsPrimativeArray() == true)
                         {
@@ -475,24 +428,18 @@ namespace CP.Collections
                     }
                 }
             }
-            finally
+            catch
             {
-                if (propertyEnumerator is IDisposable)
-                {
-                    (propertyEnumerator as IDisposable)?.Dispose();
-                }
             }
 
             try
             {
                 if (htrx.Tag.Count > 0 && htrx.Tag[FieldInfo] != null)
                 {
-                    fieldEnumerator = ((IEnumerable?)htrx.Tag[FieldInfo])?.GetEnumerator();
-                    while (fieldEnumerator!.MoveNext())
+                    foreach (FieldInfo fieldInfo in (IEnumerable?)htrx.Tag[FieldInfo]!)
                     {
-                        var fieldInfo = (FieldInfo)fieldEnumerator.Current;
                         var name = fieldInfo.Name;
-                        if (fieldInfo?.FieldType?.IsPrimativeArray() == true)
+                        if (fieldInfo.FieldType?.IsPrimativeArray() == true)
                         {
                             ValueChanging(name);
                             var obj = fieldInfo.GetValue(value);
@@ -504,18 +451,14 @@ namespace CP.Collections
                             htrx[true, name]!.Tag![name] = fieldInfo;
                             var htRx = htrx;
                             var item = htRx[true, name];
-                            SetFieldByReflection(fieldInfo, ref item!, fieldInfo?.GetValue(value), name);
+                            SetFieldByReflection(fieldInfo, ref item!, fieldInfo.GetValue(value), name);
                             htRx[true, name] = item;
                         }
                     }
                 }
             }
-            finally
+            catch
             {
-                if (fieldEnumerator is IDisposable)
-                {
-                    (fieldEnumerator as IDisposable)?.Dispose();
-                }
             }
         }
 
@@ -580,8 +523,13 @@ namespace CP.Collections
         /// </summary>
         /// <param name="fullName">The full name.</param>
         /// <param name="value">The value.</param>
-        private void SetFullName(string? fullName, object value)
+        private void SetFullName(string? fullName, object? value)
         {
+            if (value == null)
+            {
+                return;
+            }
+
             if (UseUpperCase)
             {
                 fullName = fullName?.ToUpper();
