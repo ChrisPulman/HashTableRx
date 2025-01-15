@@ -37,7 +37,7 @@ partial class Build : NukeBuild
     AbsolutePath PackagesDirectory => RootDirectory / "output";
 
     Target Print => _ => _
-        .Executes(() => Log.Information("NerdbankVersioning = {Value}", NerdbankVersioning.NuGetPackageVersion));
+        .Executes(() => Log.Information("NerdbankVersioning = {Value}", NerdbankVersioning.SimpleVersion));
 
     Target Clean => _ => _
         .Before(Restore)
@@ -49,7 +49,7 @@ partial class Build : NukeBuild
             }
 
             PackagesDirectory.CreateOrCleanDirectory();
-            await this.InstallDotNetSdk("6.x.x", "7.x.x", "8.x.x");
+            await this.InstallDotNetSdk("8.x.x", "9.x.x");
         });
 
     Target Restore => _ => _
@@ -60,6 +60,7 @@ partial class Build : NukeBuild
         .DependsOn(Restore, Print)
         .Executes(() => DotNetBuild(s => s
                 .SetProjectFile(Solution)
+                .SetVersion(NerdbankVersioning.SimpleVersion)
                 .SetConfiguration(Configuration)
                 .EnableNoRestore()));
 
@@ -79,7 +80,7 @@ partial class Build : NukeBuild
 
             DotNetPack(settings => settings
                 .SetConfiguration(Configuration)
-                .SetVersion(NerdbankVersioning.NuGetPackageVersion)
+                .SetVersion(NerdbankVersioning.SimpleVersion)
                 .SetOutputDirectory(PackagesDirectory)
                 .CombineWith(packableProjects, (packSettings, project) =>
                     packSettings.SetProject(project)));

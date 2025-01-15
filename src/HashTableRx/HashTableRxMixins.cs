@@ -65,7 +65,7 @@ public static class HashTableRxMixins
     /// <returns>The value of the Tag.</returns>
     public static T? Value<T>(this IHashTableRx @this, string? variable)
     {
-        if (@this == null || @this.Count == 0)
+        if (@this == null || @this.Count == 0 || variable == null)
         {
             return default;
         }
@@ -119,14 +119,14 @@ public static class HashTableRxMixins
     /// <returns>
     /// An object of the current values.
     /// </returns>
-    public static object GetStucture(this IHashTableRx @this)
+    public static object? GetStucture(this IHashTableRx @this)
     {
         if (@this == null)
         {
-            return default!;
+            return default;
         }
 
-        return @this[true]!;
+        return @this[true];
     }
 
     /// <summary>

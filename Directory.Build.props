@@ -14,7 +14,7 @@
     <Nullable>enable</Nullable>
     <PackageIcon>icon.png</PackageIcon>
     <Configurations>Debug;Release;PreRelease</Configurations>
-    <PackageReleaseNotes>Compatability with Net 6 / 8 and netstandard2.0</PackageReleaseNotes>
+    <PackageReleaseNotes>Compatability with Net 8 / 9 and netstandard2.0</PackageReleaseNotes>
     <PackageTags>Hashtable;rx;reactive;extensions;observable;LINQ;net;netstandard</PackageTags>
     <EnableNETAnalyzers>True</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
