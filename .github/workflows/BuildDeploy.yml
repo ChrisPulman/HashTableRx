@@ -29,6 +29,8 @@ jobs:
     permissions: write-all
     environment:
       name: release
+    outputs:
+      nbgv: ${{ steps.nbgv.outputs.SemVer2 }}
     steps:
       - uses: actions/checkout@v4
         with:

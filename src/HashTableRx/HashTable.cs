@@ -14,7 +14,7 @@ namespace CP.Collections;
 /// Represents a collection of key/value pairs that are organized based on the hash code of the key.
 /// </summary>
 [Serializable]
-public class HashTable : Hashtable, IObservable<(string key, object? value)>, ICancelable
+public class HashTable : Hashtable, IObservable<(string key, object? value)>, ICancelable, ICollection, IEnumerable
 {
     private readonly SingleAssignmentDisposable _subscription = new();
     private readonly IScheduler _scheduler;
