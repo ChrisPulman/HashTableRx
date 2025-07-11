@@ -113,13 +113,13 @@ public static class HashTableRxMixins
     }
 
     /// <summary>
-    /// Gets the stucture.
+    /// Gets the structure.
     /// </summary>
     /// <param name="this">The this.</param>
     /// <returns>
     /// An object of the current values.
     /// </returns>
-    public static object? GetStucture(this IHashTableRx @this)
+    public static object? GetStructure(this IHashTableRx @this)
     {
         if (@this == null)
         {
@@ -130,11 +130,11 @@ public static class HashTableRxMixins
     }
 
     /// <summary>
-    /// Sets the stucture.
+    /// Sets the structure.
     /// </summary>
     /// <param name="this">The this.</param>
     /// <param name="value">The value.</param>
-    public static void SetStucture(this IHashTableRx @this, object value)
+    public static void SetStructure(this IHashTableRx @this, object value)
     {
         if (@this == null || value == null)
         {

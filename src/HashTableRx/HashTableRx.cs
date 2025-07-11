@@ -19,6 +19,7 @@ public class HashTableRx : HashTable, IHashTableRx
 {
     private const string PropertyInfo = nameof(PropertyInfo);
     private const string FieldInfo = nameof(FieldInfo);
+    private const string Data = nameof(Data);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="HashTableRx" /> class.
@@ -186,7 +187,7 @@ public class HashTableRx : HashTable, IHashTableRx
             return null;
         }
 
-        var data = htrx.Tag?["Data"];
+        var data = htrx.Tag?[Data];
         try
         {
             if (htrx.Tag?[PropertyInfo] != null)
@@ -401,7 +402,7 @@ public class HashTableRx : HashTable, IHashTableRx
             return;
         }
 
-        htrx.Tag!["Data"] = value;
+        htrx.Tag![Data] = value;
         htrx.Tag[FieldInfo] = value.GetType().GetFields();
         htrx.Tag[PropertyInfo] = value.GetType().GetProperties();
         try

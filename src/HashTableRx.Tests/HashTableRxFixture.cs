@@ -30,7 +30,7 @@ public class HashTableRxFixture : IDisposable
         Assert.NotNull(obj);
 
         HtRx = new(false);
-        HtRx.SetStucture(obj);
+        HtRx.SetStructure(obj);
     }
 
     /// <summary>
