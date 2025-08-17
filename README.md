@@ -8,7 +8,7 @@ A reactive hash table that mirrors the structure of an object into a dotted path
 
 HashTableRx lets you:
 - Reflect an object (even from an unknown assembly) into a hierarchical hash table.
-- Get and set values using dotted path keys like "Rig.Temperature.PV.Value".
+- Get and set values using dotted path keys like "Process.Temperature.PV.Value".
 - Observe individual variables or all changes as IObservable streams.
 - Toggle case sensitivity via UseUpperCase.
 
