@@ -9,23 +9,12 @@ using Serilog;
 using static Nuke.Common.Tools.DotNet.DotNetTasks;
 using Nuke.Common.Tools.PowerShell;
 using CP.BuildTools;
+using Nuke.Common.Utilities;
+using System.Linq;
 
-////[GitHubActions(
-////    "BuildOnly",
-////    GitHubActionsImage.WindowsLatest,
-////    OnPushBranchesIgnore = new[] { "main" },
-////    FetchDepth = 0,
-////    InvokedTargets = new[] { nameof(Compile) })]
-////[GitHubActions(
-////    "BuildDeploy",
-////    GitHubActionsImage.WindowsLatest,
-////    OnPushBranches = new[] { "main" },
-////    FetchDepth = 0,
-////    ImportSecrets = new[] { nameof(NuGetApiKey) },
-////    InvokedTargets = new[] { nameof(Compile), nameof(Deploy) })]
 partial class Build : NukeBuild
 {
-    public static int Main() => Execute<Build>(x => x.Compile);
+    public static int Main() => Execute<Build>(x => x.Test);
 
     [GitRepository] readonly GitRepository Repository;
     [Solution(GenerateProjects = true)] readonly Solution Solution;
@@ -102,4 +91,21 @@ partial class Build : NukeBuild
                     degreeOfParallelism: 5, completeOnFailure: true);
         }
     });
+
+    Target Test => _ => _
+        .DependsOn(Compile)
+        .Executes(() =>
+        {
+            var testProjects = Solution.AllProjects.Where(p => p.Name.EndsWith("Tests")).ToList();
+            if (testProjects is null || testProjects.Count == 0)
+            {
+                Log.Warning("No test projects found.");
+                return;
+            }
+            DotNetTest(s => s
+                .SetConfiguration(Configuration)
+                .SetNoBuild(true)
+                .CombineWith(testProjects, (testSettings, project) =>
+                    testSettings.SetProjectFile(project)));
+        });
 }

@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Reflection;
@@ -43,7 +44,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// </summary>
     /// <param name="info">The Serialization Info.</param>
     /// <param name="context">The Context.</param>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1231:Make parameter ref read-only", Justification = "not required.")]
+    [SuppressMessage("Roslynator", "RCS1231:Make parameter ref read-only", Justification = "not required.")]
     protected HashTableRx(SerializationInfo info, StreamingContext context) =>
         Tag = [];
 
@@ -90,19 +91,21 @@ public class HashTableRx : HashTable, IHashTableRx
     }
 
     /// <summary>
-    /// Gets or sets the <see cref="object"/> with the specified use reflection.
+    /// Gets or sets the <see cref="object"/> mapped via reflection to/from the backing structure.
     /// </summary>
     /// <value>The <see cref="object"/>.</value>
     /// <param name="useReflection">if set to <c>true</c> [use reflection].</param>
     /// <returns>An object.</returns>
     public object? this[bool useReflection]
     {
+        [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
         get
         {
             var exHashtable = this;
             return GetByReflection(ref exHashtable);
         }
 
+        [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
         set
         {
             if (value != null)
@@ -124,7 +127,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <returns>
     /// A reactive Hash Table.
     /// </returns>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1163:Unused parameter", Justification = "intended alternate")]
+    [SuppressMessage("Roslynator", "RCS1163:Unused parameter", Justification = "intended alternate")]
     private HashTableRx? this[bool unused, object? key]
     {
         get => (HashTableRx?)this[key!] ?? new HashTableRx(UseUpperCase);
@@ -138,7 +141,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <param name="key">The key.</param>
     /// <param name="isEnd">if set to <c>true</c> [is end].</param>
     /// <returns>An object.</returns>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1163:Unused parameter", Justification = "intended alternate")]
+    [SuppressMessage("Roslynator", "RCS1163:Unused parameter", Justification = "intended alternate")]
     private object? this[object? key, bool isEnd]
     {
         get => key == null ? null : this[key];
@@ -180,6 +183,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// </summary>
     /// <param name="htrx">The Reactive Hash Table.</param>
     /// <returns>An object.</returns>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
     private static object? GetByReflection(ref HashTableRx htrx)
     {
         if (htrx.Tag?.Count == 0)
@@ -188,90 +192,97 @@ public class HashTableRx : HashTable, IHashTableRx
         }
 
         var data = htrx.Tag?[Data];
+        if (data == null)
+        {
+            return null;
+        }
+
         try
         {
-            if (htrx.Tag?[PropertyInfo] != null)
+            var acc = ReflectionAccessors.Get(data.GetType());
+
+            // write back primitive-like
+            foreach (var m in acc.PrimitiveLike)
             {
-                foreach (PropertyInfo propertyInfo in (IEnumerable?)htrx.Tag[PropertyInfo]!)
-                {
-                    if (propertyInfo?.PropertyType?.IsPrimativeArray() == true)
-                    {
-                        propertyInfo?.SetValue(data, htrx[propertyInfo.Name, true], null);
-                    }
-                }
+                m.Setter?.Invoke(data, htrx[m.Name, true]);
+            }
+
+            // recurse complex
+            foreach (var m in acc.Complex)
+            {
+                var eHt = htrx;
+                var name = m.Name;
+                var item = eHt[true, name];
+                var obj = m.Getter(data);
+                GetFieldByAccessors(ref item!, ref obj);
+                eHt[true, name] = item;
             }
         }
         catch
         {
         }
 
-        if (htrx.Tag?[FieldInfo] != null)
-        {
-            try
-            {
-                if (htrx.Tag[FieldInfo] != null)
-                {
-                    foreach (FieldInfo fieldInfo in (IEnumerable?)htrx.Tag[FieldInfo]!)
-                    {
-                        if (fieldInfo?.FieldType?.IsPrimativeArray() == true)
-                        {
-                            fieldInfo?.SetValue(data, htrx[fieldInfo.Name, true]);
-                        }
-                        else
-                        {
-                            var eHt = htrx;
-                            var name = fieldInfo?.Name;
-                            var item = eHt[true, name];
-                            var obj = fieldInfo?.GetValue(data);
-                            GetFieldByReflection(fieldInfo, ref item!, ref obj);
-                            eHt[true, name] = item;
-                        }
-                    }
-                }
-            }
-            catch
-            {
-            }
-        }
-
         return data;
     }
 
-    /// <summary>
-    /// Gets the by reflection.
-    /// </summary>
-    /// <param name="fi">The field info.</param>
-    /// <param name="htrx">The Reactive Hash Table.</param>
-    /// <param name="data">The data.</param>
-    private static void GetFieldByReflection(FieldInfo? fi, ref HashTableRx htrx, ref object? data)
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private static void SetComplexByAccessors(ref HashTableRx eht, object subValue, string fullName)
     {
-        var properties = fi?.FieldType.GetProperties();
-        for (var i = 0; i < checked(properties?.Length); i++)
+        var acc = ReflectionAccessors.Get(subValue.GetType());
+
+        // properties/fields that are primitive-like
+        for (var i = 0; i < acc.PrimitiveLike.Count; i++)
         {
-            var propertyInfo = properties[i];
-            if (propertyInfo?.PropertyType.IsPrimativeArray() == true)
-            {
-                propertyInfo.SetValue(data, htrx[propertyInfo.Name, true], null);
-            }
+            var m = acc.PrimitiveLike[i];
+            var obj = m.Getter(subValue);
+
+            // set on the current nested table using the member name
+            eht[m.Name, true] = obj;
         }
 
-        var fields = fi?.FieldType.GetFields();
-        for (var j = 0; j < checked(fields?.Length); j++)
+        // complex members recurse
+        for (var j = 0; j < acc.Complex.Count; j++)
         {
-            var fieldInfo = fields[j];
-            if (fieldInfo.FieldType.IsPrimativeArray())
+            var m = acc.Complex[j];
+            var name = m.Name;
+            eht[true, name]!.Tag![name] = m;
+            var eHt = eht;
+            var item = eHt[true, name];
+            var deeper = m.Getter(subValue);
+            if (deeper != null)
             {
-                fieldInfo.SetValue(data, htrx[fieldInfo.Name, true]);
+                SetComplexByAccessors(ref item!, deeper, fullName + "." + name);
             }
-            else
-            {
-                var htRx = htrx;
-                var name = fieldInfo.Name;
-                var item = htRx[true, name];
-                var subData = fieldInfo.GetValue(data);
-                GetFieldByReflection(fieldInfo, ref item!, ref subData);
-                htRx[true, name] = item;
-            }
+
+            eHt[true, name] = item;
+        }
+    }
+
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private static void GetFieldByAccessors(ref HashTableRx htrx, ref object? data)
+    {
+        if (data == null)
+        {
+            return;
+        }
+
+        var acc = ReflectionAccessors.Get(data.GetType());
+
+        for (var i = 0; i < acc.PrimitiveLike.Count; i++)
+        {
+            var m = acc.PrimitiveLike[i];
+            m.Setter?.Invoke(data, htrx[m.Name, true]);
+        }
+
+        for (var j = 0; j < acc.Complex.Count; j++)
+        {
+            var m = acc.Complex[j];
+            var htRx = htrx;
+            var name = m.Name;
+            var item = htRx[true, name];
+            var subData = m.Getter(data);
+            GetFieldByAccessors(ref item!, ref subData);
+            htRx[true, name] = item;
         }
     }
 
@@ -384,7 +395,12 @@ public class HashTableRx : HashTable, IHashTableRx
         }
 
         var remainingNames = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
-        var item = (HashTableRx?)base[firstName];
+        if (base[firstName] is not HashTableRx item)
+        {
+            // Not a nested table; cannot traverse further
+            return null;
+        }
+
         var obj = GetFullName(remainingNames, ref item!);
         base[firstName] = item;
         return obj;
@@ -395,6 +411,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// </summary>
     /// <param name="htrx">The EHT.</param>
     /// <param name="value">The value.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
     private void SetByReflection(ref HashTableRx htrx, object value)
     {
         if (value == null)
@@ -403,31 +420,20 @@ public class HashTableRx : HashTable, IHashTableRx
         }
 
         htrx.Tag![Data] = value;
-        htrx.Tag[FieldInfo] = value.GetType().GetFields();
-        htrx.Tag[PropertyInfo] = value.GetType().GetProperties();
+        var type = value.GetType();
+        var acc = ReflectionAccessors.Get(type);
+        htrx.Tag[FieldInfo] = acc.Complex; // store complex for traversal
+        htrx.Tag[PropertyInfo] = acc.PrimitiveLike; // store primitive for fast set
         try
         {
-            if (htrx.Tag.Count > 0 && htrx.Tag[PropertyInfo] != null)
+            // Primitive-like members set directly
+            foreach (var m in acc.PrimitiveLike)
             {
-                foreach (PropertyInfo propertyInfo in (IEnumerable?)htrx.Tag[PropertyInfo]!)
-                {
-                    var name = propertyInfo.Name;
-                    if (propertyInfo.PropertyType?.IsPrimativeArray() == true)
-                    {
-                        ValueChanging(name);
-                        var obj = propertyInfo.GetValue(value, null);
-                        htrx[name, true] = obj;
-                        ValueChanged(name, obj);
-                    }
-                    else
-                    {
-                        htrx[true, name]!.Tag![name] = propertyInfo;
-                        var htRx = htrx;
-                        var item = htRx[true, name];
-                        SetPropertyByReflection(propertyInfo, ref item!, propertyInfo.GetValue(value)!, name);
-                        htRx[true, name] = item;
-                    }
-                }
+                var name = m.Name;
+                ValueChanging(name);
+                var obj = m.Getter(value);
+                htrx[name, true] = obj;
+                ValueChanged(name, obj);
             }
         }
         catch
@@ -436,27 +442,20 @@ public class HashTableRx : HashTable, IHashTableRx
 
         try
         {
-            if (htrx.Tag.Count > 0 && htrx.Tag[FieldInfo] != null)
+            // Complex members recurse
+            foreach (var m in acc.Complex)
             {
-                foreach (FieldInfo fieldInfo in (IEnumerable?)htrx.Tag[FieldInfo]!)
+                var name = m.Name;
+                htrx[true, name]!.Tag![name] = m;
+                var htRx = htrx;
+                var item = htRx[true, name];
+                var subValue = m.Getter(value);
+                if (subValue != null)
                 {
-                    var name = fieldInfo.Name;
-                    if (fieldInfo.FieldType?.IsPrimativeArray() == true)
-                    {
-                        ValueChanging(name);
-                        var obj = fieldInfo.GetValue(value);
-                        htrx[name, true] = obj;
-                        ValueChanged(name, obj);
-                    }
-                    else
-                    {
-                        htrx[true, name]!.Tag![name] = fieldInfo;
-                        var htRx = htrx;
-                        var item = htRx[true, name];
-                        SetFieldByReflection(fieldInfo, ref item!, fieldInfo.GetValue(value), name);
-                        htRx[true, name] = item;
-                    }
+                    SetComplexByAccessors(ref item!, subValue, name);
                 }
+
+                htRx[true, name] = item;
             }
         }
         catch
@@ -471,6 +470,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <param name="eht">The Reactive Hash Table.</param>
     /// <param name="value">The value.</param>
     /// <param name="fullName">The full name.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
     private void SetFieldByReflection(FieldInfo? fi, ref HashTableRx eht, object? value, string fullName)
     {
         var properties = fi?.FieldType.GetProperties();
@@ -546,7 +546,10 @@ public class HashTableRx : HashTable, IHashTableRx
         }
         else
         {
-            base[firstName] ??= new HashTableRx(Source!) { UseUpperCase = UseUpperCase };
+            if (base[firstName] is not HashTableRx)
+            {
+                base[firstName] = new HashTableRx(Source!) { UseUpperCase = UseUpperCase };
+            }
 
             var str = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
             var item = (HashTableRx?)base[firstName];
@@ -564,6 +567,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <param name="htrx">The Reactive Hash Table.</param>
     /// <param name="value">The value.</param>
     /// <param name="fullName">The full name.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
     private void SetPropertyByReflection(PropertyInfo pi, ref HashTableRx htrx, object value, string fullName)
     {
         var properties = pi.PropertyType.GetProperties();

@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Chris Pulman. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Reactive.Linq;
 
 namespace CP.Collections;
@@ -15,6 +16,7 @@ public static class HashTableRxMixins
     /// </summary>
     /// <param name="this">The this.</param>
     /// <returns><c>true</c> if [is primative array] [the specified this]; otherwise, <c>false</c>.</returns>
+    [UnconditionalSuppressMessage("AOT", "IL2026", Justification = "Only type metadata checks; no reflection on members.")]
     public static bool IsPrimativeArray(this Type @this)
     {
         if (@this?.IsPrimitive == true || @this == typeof(string))
@@ -24,9 +26,8 @@ public static class HashTableRxMixins
 
         if (@this?.IsArray == true)
         {
-            var typeString = @this?.FullName?.Replace("[]", string.Empty);
-            var type = Type.GetType(typeString!);
-            return type?.IsPrimitive == true || type == typeof(string);
+            var elementType = @this.GetElementType();
+            return elementType?.IsPrimitive == true || elementType == typeof(string);
         }
 
         return false;
@@ -65,7 +66,7 @@ public static class HashTableRxMixins
     /// <returns>The value of the Tag.</returns>
     public static T? Value<T>(this IHashTableRx @this, string? variable)
     {
-        if (@this == null || @this.Count == 0 || variable == null)
+        if (@this == null || variable == null)
         {
             return default;
         }
@@ -75,7 +76,20 @@ public static class HashTableRxMixins
             variable = variable?.ToUpperInvariant();
         }
 
-        return (T?)@this[variable!];
+        try
+        {
+            var raw = @this[variable!];
+            if (raw is T t)
+            {
+                return t;
+            }
+
+            return (T?)raw;
+        }
+        catch
+        {
+            return default;
+        }
     }
 
     /// <summary>
@@ -88,7 +102,7 @@ public static class HashTableRxMixins
     /// <returns>True if value was set.</returns>
     public static bool Value<T>(this IHashTableRx @this, string? variable, T? value)
     {
-        if (@this == null || @this.Count == 0)
+        if (@this == null)
         {
             return false;
         }
@@ -98,12 +112,22 @@ public static class HashTableRxMixins
             variable = variable?.ToUpperInvariant();
         }
 
-        if (@this!.Value<T>(variable) == null)
+        object? raw;
+        try
+        {
+            raw = @this![variable!];
+        }
+        catch
+        {
+            raw = null;
+        }
+
+        if (raw is null)
         {
             throw new InvalidVariableException(variable);
         }
 
-        if (@this!.Value<T>(variable)?.GetType() != value?.GetType())
+        if (raw.GetType() != value?.GetType())
         {
             throw new InvalidCastException($"Failed To Set Value, unable to cast from {typeof(T)}");
         }
@@ -119,6 +143,7 @@ public static class HashTableRxMixins
     /// <returns>
     /// An object of the current values.
     /// </returns>
+    [RequiresUnreferencedCode("May use reflection if structure contains fields/properties.")]
     public static object? GetStructure(this IHashTableRx @this)
     {
         if (@this == null)
@@ -134,6 +159,7 @@ public static class HashTableRxMixins
     /// </summary>
     /// <param name="this">The this.</param>
     /// <param name="value">The value.</param>
+    [RequiresUnreferencedCode("Uses reflection to traverse structure.")]
     public static void SetStructure(this IHashTableRx @this, object value)
     {
         if (@this == null || value == null)
