@@ -10,19 +10,6 @@ using static Nuke.Common.Tools.DotNet.DotNetTasks;
 using Nuke.Common.Tools.PowerShell;
 using CP.BuildTools;
 
-////[GitHubActions(
-////    "BuildOnly",
-////    GitHubActionsImage.WindowsLatest,
-////    OnPushBranchesIgnore = new[] { "main" },
-////    FetchDepth = 0,
-////    InvokedTargets = new[] { nameof(Compile) })]
-////[GitHubActions(
-////    "BuildDeploy",
-////    GitHubActionsImage.WindowsLatest,
-////    OnPushBranches = new[] { "main" },
-////    FetchDepth = 0,
-////    ImportSecrets = new[] { nameof(NuGetApiKey) },
-////    InvokedTargets = new[] { nameof(Compile), nameof(Deploy) })]
 partial class Build : NukeBuild
 {
     public static int Main() => Execute<Build>(x => x.Compile);
@@ -102,4 +89,21 @@ partial class Build : NukeBuild
                     degreeOfParallelism: 5, completeOnFailure: true);
         }
     });
+
+    Target Test => _ => _
+        .DependsOn(Compile)
+        .Executes(() =>
+        {
+            var testProjects = Solution.GetTestProjects();
+            if (testProjects is null || testProjects.Count == 0)
+            {
+                Log.Warning("No test projects found.");
+                return;
+            }
+            DotNetTest(s => s
+                .SetConfiguration(Configuration)
+                .SetNoBuild(true)
+                .CombineWith(testProjects, (testSettings, project) =>
+                    testSettings.SetProjectFile(project)));
+        });
 }
