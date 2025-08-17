@@ -9,10 +9,12 @@ using Serilog;
 using static Nuke.Common.Tools.DotNet.DotNetTasks;
 using Nuke.Common.Tools.PowerShell;
 using CP.BuildTools;
+using Nuke.Common.Utilities;
+using System.Linq;
 
 partial class Build : NukeBuild
 {
-    public static int Main() => Execute<Build>(x => x.Compile);
+    public static int Main() => Execute<Build>(x => x.Test);
 
     [GitRepository] readonly GitRepository Repository;
     [Solution(GenerateProjects = true)] readonly Solution Solution;
@@ -94,7 +96,7 @@ partial class Build : NukeBuild
         .DependsOn(Compile)
         .Executes(() =>
         {
-            var testProjects = Solution.GetTestProjects();
+            var testProjects = Solution.AllProjects.Where(p => p.Name.EndsWith("Tests")).ToList();
             if (testProjects is null || testProjects.Count == 0)
             {
                 Log.Warning("No test projects found.");
