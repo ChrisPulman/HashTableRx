@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.Reactive.Linq;
+using System.Threading;
 
 namespace CP.Collections.Tests;
 
@@ -23,7 +24,7 @@ public class HashTableBaseTests
     }
 
     /// <summary>
-    /// Remove and Clear should not throw and the table is empty.
+    /// Remove and Clear should not throw and the table becomes empty (operations are scheduled).
     /// </summary>
     [Fact]
     public void RemoveAndClearDoNotThrow()
@@ -33,6 +34,9 @@ public class HashTableBaseTests
         ht.Add("K2", 2);
         ht.Remove("K1");
         ht.Clear();
-        Assert.Empty(ht);
+
+        // Operations are scheduled on a background scheduler, wait for completion.
+        var emptied = SpinWait.SpinUntil(() => ht.Count == 0, TimeSpan.FromSeconds(1));
+        Assert.True(emptied, $"Expected table to be empty but count was {ht.Count}");
     }
 }
