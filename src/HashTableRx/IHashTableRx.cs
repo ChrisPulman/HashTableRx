@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Reactive.Disposables;
 
 namespace CP.Collections;
@@ -41,7 +42,13 @@ public interface IHashTableRx : IEnumerable, ICollection, INotifyPropertyChanged
     /// <value>The <see cref="object"/>.</value>
     /// <param name="useReflection">if set to <c>true</c> [use reflection].</param>
     /// <returns>An object.</returns>
-    object? this[bool useReflection] { get; set; }
+    object? this[bool useReflection]
+    {
+        [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+        get;
+        [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+        set;
+    }
 
     /// <summary>
     /// Gets or sets the <see cref="object"/> with the specified full name.

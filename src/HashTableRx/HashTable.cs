@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
@@ -136,6 +137,7 @@ public class HashTable : Hashtable, IObservable<(string key, object? value)>, IC
     /// </summary>
     /// <param name="key">The index.</param>
     /// <returns>A Observable.</returns>
+    [UnconditionalSuppressMessage("AOT", "IL2026", Justification = "No reflection used; simple observable wrapper around indexer.")]
     public IObservable<(string key, object value)> Get(object key) =>
 #if NETSTANDARD2_0
         Observable.Start(() => this[key], _scheduler).Select(x => (key.ToString(), x!));

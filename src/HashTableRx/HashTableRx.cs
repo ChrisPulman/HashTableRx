@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Reflection;
@@ -90,19 +91,21 @@ public class HashTableRx : HashTable, IHashTableRx
     }
 
     /// <summary>
-    /// Gets or sets the <see cref="object"/> with the specified use reflection.
+    /// Gets or sets the <see cref="object"/> mapped via reflection to/from the backing structure.
     /// </summary>
     /// <value>The <see cref="object"/>.</value>
     /// <param name="useReflection">if set to <c>true</c> [use reflection].</param>
     /// <returns>An object.</returns>
     public object? this[bool useReflection]
     {
+        [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
         get
         {
             var exHashtable = this;
             return GetByReflection(ref exHashtable);
         }
 
+        [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
         set
         {
             if (value != null)
@@ -180,6 +183,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// </summary>
     /// <param name="htrx">The Reactive Hash Table.</param>
     /// <returns>An object.</returns>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
     private static object? GetByReflection(ref HashTableRx htrx)
     {
         if (htrx.Tag?.Count == 0)
@@ -243,6 +247,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <param name="fi">The field info.</param>
     /// <param name="htrx">The Reactive Hash Table.</param>
     /// <param name="data">The data.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
     private static void GetFieldByReflection(FieldInfo? fi, ref HashTableRx htrx, ref object? data)
     {
         var properties = fi?.FieldType.GetProperties();
@@ -384,7 +389,12 @@ public class HashTableRx : HashTable, IHashTableRx
         }
 
         var remainingNames = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
-        var item = (HashTableRx?)base[firstName];
+        if (base[firstName] is not HashTableRx item)
+        {
+            // Not a nested table; cannot traverse further
+            return null;
+        }
+
         var obj = GetFullName(remainingNames, ref item!);
         base[firstName] = item;
         return obj;
@@ -395,6 +405,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// </summary>
     /// <param name="htrx">The EHT.</param>
     /// <param name="value">The value.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
     private void SetByReflection(ref HashTableRx htrx, object value)
     {
         if (value == null)
@@ -471,6 +482,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <param name="eht">The Reactive Hash Table.</param>
     /// <param name="value">The value.</param>
     /// <param name="fullName">The full name.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
     private void SetFieldByReflection(FieldInfo? fi, ref HashTableRx eht, object? value, string fullName)
     {
         var properties = fi?.FieldType.GetProperties();
@@ -546,7 +558,10 @@ public class HashTableRx : HashTable, IHashTableRx
         }
         else
         {
-            base[firstName] ??= new HashTableRx(Source!) { UseUpperCase = UseUpperCase };
+            if (base[firstName] is not HashTableRx)
+            {
+                base[firstName] = new HashTableRx(Source!) { UseUpperCase = UseUpperCase };
+            }
 
             var str = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
             var item = (HashTableRx?)base[firstName];
@@ -564,6 +579,7 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <param name="htrx">The Reactive Hash Table.</param>
     /// <param name="value">The value.</param>
     /// <param name="fullName">The full name.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
     private void SetPropertyByReflection(PropertyInfo pi, ref HashTableRx htrx, object value, string fullName)
     {
         var properties = pi.PropertyType.GetProperties();
