@@ -13,7 +13,7 @@ namespace CP.Collections;
 /// </summary>
 /// <seealso cref="INotifyPropertyChanged"/>
 /// <seealso cref="INotifyPropertyChanging"/>
-[System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1710:Identifiers should have correct suffix", Justification = "By design.")]
+[SuppressMessage("Naming", "CA1710:Identifiers should have correct suffix", Justification = "By design.")]
 public interface IHashTableRx : IEnumerable, ICollection, INotifyPropertyChanged, INotifyPropertyChanging, ICancelable
 {
     /// <summary>
