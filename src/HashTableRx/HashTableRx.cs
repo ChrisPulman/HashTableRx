@@ -192,97 +192,91 @@ public class HashTableRx : HashTable, IHashTableRx
         }
 
         var data = htrx.Tag?[Data];
-        if (data == null)
-        {
-            return null;
-        }
-
         try
         {
-            var acc = ReflectionAccessors.Get(data.GetType());
-
-            // write back primitive-like
-            foreach (var m in acc.PrimitiveLike)
+            if (htrx.Tag?[PropertyInfo] != null)
             {
-                m.Setter?.Invoke(data, htrx[m.Name, true]);
-            }
-
-            // recurse complex
-            foreach (var m in acc.Complex)
-            {
-                var eHt = htrx;
-                var name = m.Name;
-                var item = eHt[true, name];
-                var obj = m.Getter(data);
-                GetFieldByAccessors(ref item!, ref obj);
-                eHt[true, name] = item;
+                foreach (PropertyInfo propertyInfo in (IEnumerable?)htrx.Tag[PropertyInfo]!)
+                {
+                    if (propertyInfo?.PropertyType?.IsPrimativeArray() == true)
+                    {
+                        propertyInfo?.SetValue(data, htrx[propertyInfo.Name, true], null);
+                    }
+                }
             }
         }
         catch
         {
         }
 
+        if (htrx.Tag?[FieldInfo] != null)
+        {
+            try
+            {
+                if (htrx.Tag[FieldInfo] != null)
+                {
+                    foreach (FieldInfo fieldInfo in (IEnumerable?)htrx.Tag[FieldInfo]!)
+                    {
+                        if (fieldInfo?.FieldType?.IsPrimativeArray() == true)
+                        {
+                            fieldInfo?.SetValue(data, htrx[fieldInfo.Name, true]);
+                        }
+                        else
+                        {
+                            var eHt = htrx;
+                            var name = fieldInfo?.Name;
+                            var item = eHt[true, name];
+                            var obj = fieldInfo?.GetValue(data);
+                            GetFieldByReflection(fieldInfo, ref item!, ref obj);
+                            eHt[true, name] = item;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
         return data;
     }
 
+    /// <summary>
+    /// Gets the by reflection.
+    /// </summary>
+    /// <param name="fi">The field info.</param>
+    /// <param name="htrx">The Reactive Hash Table.</param>
+    /// <param name="data">The data.</param>
     [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
-    private static void SetComplexByAccessors(ref HashTableRx eht, object subValue, string fullName)
+    private static void GetFieldByReflection(FieldInfo? fi, ref HashTableRx htrx, ref object? data)
     {
-        var acc = ReflectionAccessors.Get(subValue.GetType());
-
-        // properties/fields that are primitive-like
-        for (var i = 0; i < acc.PrimitiveLike.Count; i++)
+        var properties = fi?.FieldType.GetProperties();
+        for (var i = 0; i < checked(properties?.Length); i++)
         {
-            var m = acc.PrimitiveLike[i];
-            var obj = m.Getter(subValue);
-
-            // set on the current nested table using the member name
-            eht[m.Name, true] = obj;
-        }
-
-        // complex members recurse
-        for (var j = 0; j < acc.Complex.Count; j++)
-        {
-            var m = acc.Complex[j];
-            var name = m.Name;
-            eht[true, name]!.Tag![name] = m;
-            var eHt = eht;
-            var item = eHt[true, name];
-            var deeper = m.Getter(subValue);
-            if (deeper != null)
+            var propertyInfo = properties[i];
+            if (propertyInfo?.PropertyType.IsPrimativeArray() == true)
             {
-                SetComplexByAccessors(ref item!, deeper, fullName + "." + name);
+                propertyInfo.SetValue(data, htrx[propertyInfo.Name, true], null);
             }
-
-            eHt[true, name] = item;
-        }
-    }
-
-    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
-    private static void GetFieldByAccessors(ref HashTableRx htrx, ref object? data)
-    {
-        if (data == null)
-        {
-            return;
         }
 
-        var acc = ReflectionAccessors.Get(data.GetType());
-
-        for (var i = 0; i < acc.PrimitiveLike.Count; i++)
+        var fields = fi?.FieldType.GetFields();
+        for (var j = 0; j < checked(fields?.Length); j++)
         {
-            var m = acc.PrimitiveLike[i];
-            m.Setter?.Invoke(data, htrx[m.Name, true]);
-        }
-
-        for (var j = 0; j < acc.Complex.Count; j++)
-        {
-            var m = acc.Complex[j];
-            var htRx = htrx;
-            var name = m.Name;
-            var item = htRx[true, name];
-            var subData = m.Getter(data);
-            GetFieldByAccessors(ref item!, ref subData);
-            htRx[true, name] = item;
+            var fieldInfo = fields[j];
+            if (fieldInfo.FieldType.IsPrimativeArray())
+            {
+                fieldInfo.SetValue(data, htrx[fieldInfo.Name, true]);
+            }
+            else
+            {
+                var htRx = htrx;
+                var name = fieldInfo.Name;
+                var item = htRx[true, name];
+                var subData = fieldInfo.GetValue(data);
+                GetFieldByReflection(fieldInfo, ref item!, ref subData);
+                htRx[true, name] = item;
+            }
         }
     }
 
@@ -420,20 +414,31 @@ public class HashTableRx : HashTable, IHashTableRx
         }
 
         htrx.Tag![Data] = value;
-        var type = value.GetType();
-        var acc = ReflectionAccessors.Get(type);
-        htrx.Tag[FieldInfo] = acc.Complex; // store complex for traversal
-        htrx.Tag[PropertyInfo] = acc.PrimitiveLike; // store primitive for fast set
+        htrx.Tag[FieldInfo] = value.GetType().GetFields();
+        htrx.Tag[PropertyInfo] = value.GetType().GetProperties();
         try
         {
-            // Primitive-like members set directly
-            foreach (var m in acc.PrimitiveLike)
+            if (htrx.Tag.Count > 0 && htrx.Tag[PropertyInfo] != null)
             {
-                var name = m.Name;
-                ValueChanging(name);
-                var obj = m.Getter(value);
-                htrx[name, true] = obj;
-                ValueChanged(name, obj);
+                foreach (PropertyInfo propertyInfo in (IEnumerable?)htrx.Tag[PropertyInfo]!)
+                {
+                    var name = propertyInfo.Name;
+                    if (propertyInfo.PropertyType?.IsPrimativeArray() == true)
+                    {
+                        ValueChanging(name);
+                        var obj = propertyInfo.GetValue(value, null);
+                        htrx[name, true] = obj;
+                        ValueChanged(name, obj);
+                    }
+                    else
+                    {
+                        htrx[true, name]!.Tag![name] = propertyInfo;
+                        var htRx = htrx;
+                        var item = htRx[true, name];
+                        SetPropertyByReflection(propertyInfo, ref item!, propertyInfo.GetValue(value)!, name);
+                        htRx[true, name] = item;
+                    }
+                }
             }
         }
         catch
@@ -442,20 +447,27 @@ public class HashTableRx : HashTable, IHashTableRx
 
         try
         {
-            // Complex members recurse
-            foreach (var m in acc.Complex)
+            if (htrx.Tag.Count > 0 && htrx.Tag[FieldInfo] != null)
             {
-                var name = m.Name;
-                htrx[true, name]!.Tag![name] = m;
-                var htRx = htrx;
-                var item = htRx[true, name];
-                var subValue = m.Getter(value);
-                if (subValue != null)
+                foreach (FieldInfo fieldInfo in (IEnumerable?)htrx.Tag[FieldInfo]!)
                 {
-                    SetComplexByAccessors(ref item!, subValue, name);
+                    var name = fieldInfo.Name;
+                    if (fieldInfo.FieldType?.IsPrimativeArray() == true)
+                    {
+                        ValueChanging(name);
+                        var obj = fieldInfo.GetValue(value);
+                        htrx[name, true] = obj;
+                        ValueChanged(name, obj);
+                    }
+                    else
+                    {
+                        htrx[true, name]!.Tag![name] = fieldInfo;
+                        var htRx = htrx;
+                        var item = htRx[true, name];
+                        SetFieldByReflection(fieldInfo, ref item!, fieldInfo.GetValue(value), name);
+                        htRx[true, name] = item;
+                    }
                 }
-
-                htRx[true, name] = item;
             }
         }
         catch
