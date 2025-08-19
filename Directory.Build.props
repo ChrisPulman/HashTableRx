@@ -13,7 +13,6 @@
     <NoWarn>CS1591</NoWarn>
     <Nullable>enable</Nullable>
     <PackageIcon>icon.png</PackageIcon>
-    <Configurations>Debug;Release;PreRelease</Configurations>
     <PackageReleaseNotes>Compatability with Net 8 / 9 and netstandard2.0</PackageReleaseNotes>
     <PackageTags>Hashtable;rx;reactive;extensions;observable;LINQ;net;netstandard</PackageTags>
     <EnableNETAnalyzers>True</EnableNETAnalyzers>
@@ -53,6 +52,7 @@
 
   <ItemGroup>
     <!--<Compile Update="**\*.cs" DependentUpon="I%(Filename).cs" />-->
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.7.115" />
     <PackageReference Include="stylecop.analyzers" Version="1.2.0-beta.556" PrivateAssets="all" />
     <PackageReference Include="Roslynator.Analyzers" Version="4.14.0" PrivateAssets="All" />
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)stylecop.json" Link="stylecop.json" />
