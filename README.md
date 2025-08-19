@@ -108,7 +108,6 @@ var updated = h.GetStructure();
 
 Notes:
 - Primitive-like = primitive or string (including arrays of those). Complex members become nested nodes.
-- Reflection is optimized internally using compiled expression accessors and caching for best performance.
 - When trimming/AOT, reflection is annotated and may require preserving members. See code attributes for details.
 
 
