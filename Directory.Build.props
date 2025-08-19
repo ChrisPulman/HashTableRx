@@ -15,7 +15,7 @@
     <PackageIcon>icon.png</PackageIcon>
     <PackageReleaseNotes>Compatability with Net 8 / 9 and netstandard2.0</PackageReleaseNotes>
     <PackageTags>Hashtable;rx;reactive;extensions;observable;LINQ;net;netstandard</PackageTags>
-    <PackageReadmeFile>readme.md</PackageReadmeFile>
+    <!--<PackageReadmeFile>readme.md</PackageReadmeFile>-->
     <EnableNETAnalyzers>True</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
 
