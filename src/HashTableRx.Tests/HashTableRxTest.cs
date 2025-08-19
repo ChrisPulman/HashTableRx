@@ -55,14 +55,18 @@ public class HashTableRxTest(HashTableRxFixture fixture) : IClassFixture<HashTab
         fixture.HtRx["CalibrationDataValid"] = false;
         var t = (bool?)fixture.HtRx["CalibrationDataValid"];
         Assert.False(t);
-        disposables.Add(fixture.HtRx.Observe<bool>("CalibrationDataValid").Skip(1).Subscribe(x => Assert.True(x)));
+        var boolResullt = default(bool?);
+        disposables.Add(fixture.HtRx.Observe<bool>("CalibrationDataValid").Subscribe(x => boolResullt = x));
         fixture.HtRx["CalibrationDataValid"] = true;
+        Assert.True(boolResullt);
 
+        var floatResult = default(float?);
         fixture.HtRx["Casing.Temperature.PV.Value"] = 0.0f;
         var t2 = (float?)fixture.HtRx["Casing.Temperature.PV.Value"];
         Assert.Equal(0.0f, t2);
-        disposables.Add(fixture.HtRx.Observe<float>("Casing.Temperature.PV.Value").Skip(1).Subscribe(x => Assert.Equal(1.0f, x)));
+        disposables.Add(fixture.HtRx.Observe<float>("Casing.Temperature.PV.Value").Subscribe(x => floatResult = x));
         fixture.HtRx["Casing.Temperature.PV.Value"] = 1.0f;
+        Assert.Equal(1.0f, floatResult);
 
         disposables.Dispose();
     }

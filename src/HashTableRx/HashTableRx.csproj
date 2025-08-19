@@ -8,11 +8,10 @@
     <Deterministic>true</Deterministic>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <DebugType>portable</DebugType>
-    <Optimize>true</Optimize>
     <RootNamespace>CP.Collections</RootNamespace>
   </PropertyGroup>
 
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'net8.0' Or '$(TargetFramework)' == 'net9.0' ">
+  <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
     <InvariantGlobalization>true</InvariantGlobalization>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>
