@@ -426,7 +426,18 @@ public class HashTableRx : HashTable, IHashTableRx
                     if (propertyInfo.PropertyType?.IsPrimativeArray() == true)
                     {
                         ValueChanging(name);
-                        var obj = propertyInfo.GetValue(value, null);
+                        var obj = default(object);
+                        if (propertyInfo.PropertyType.IsTwinCATStringArray())
+                        {
+                            var arrayOfWrappers = propertyInfo?.GetValue(value);
+                            var toStringArrayMethod = value?.GetType()?.GetMethod("ToStringArray", BindingFlags.Public | BindingFlags.Static);
+                            obj = toStringArrayMethod?.Invoke(null, [arrayOfWrappers]) as string[];
+                        }
+                        else
+                        {
+                            obj = propertyInfo.GetValue(value, null);
+                        }
+
                         htrx[name, true] = obj;
                         ValueChanged(name, obj);
                     }
@@ -455,7 +466,18 @@ public class HashTableRx : HashTable, IHashTableRx
                     if (fieldInfo.FieldType?.IsPrimativeArray() == true)
                     {
                         ValueChanging(name);
-                        var obj = fieldInfo.GetValue(value);
+                        var obj = default(object);
+                        if (fieldInfo.FieldType.IsTwinCATStringArray())
+                        {
+                            var arrayOfWrappers = fieldInfo?.GetValue(value);
+                            var toStringArrayMethod = value?.GetType()?.GetMethod("ToStringArray", BindingFlags.Public | BindingFlags.Static);
+                            obj = toStringArrayMethod?.Invoke(null, [arrayOfWrappers]) as string[];
+                        }
+                        else
+                        {
+                            obj = fieldInfo.GetValue(value);
+                        }
+
                         htrx[name, true] = obj;
                         ValueChanged(name, obj);
                     }
