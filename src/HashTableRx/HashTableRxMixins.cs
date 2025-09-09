@@ -19,7 +19,7 @@ public static class HashTableRxMixins
     [UnconditionalSuppressMessage("AOT", "IL2026", Justification = "Only type metadata checks; no reflection on members.")]
     public static bool IsPrimativeArray(this Type @this)
     {
-        if (@this?.IsPrimitive == true || @this == typeof(string))
+        if (@this?.IsPrimitive == true || @this == typeof(string) || @this.IsTwinCATStringArray())
         {
             return true;
         }
@@ -32,6 +32,16 @@ public static class HashTableRxMixins
 
         return false;
     }
+
+    /// <summary>
+    /// Determines whether [is twin cat string array].
+    /// </summary>
+    /// <param name="this">The this.</param>
+    /// <returns>
+    ///   <c>true</c> if [is twin cat string array] [the specified this]; otherwise, <c>false</c>.
+    /// </returns>
+    public static bool IsTwinCATStringArray(this Type? @this) =>
+        @this?.IsArray == true && @this?.Name.Contains("STRING_") == true && @this?.Name.Contains("_WRAPPER") == true;
 
     /// <summary>
     /// Get value of fullName called on scheduler, IObservable length is one.
