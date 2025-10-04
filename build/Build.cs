@@ -30,7 +30,7 @@ partial class Build : NukeBuild
 
     Target Clean => _ => _
         .Before(Restore)
-        .Executes(async () =>
+        .Executes(() =>
         {
             if (IsLocalBuild)
             {
@@ -38,7 +38,6 @@ partial class Build : NukeBuild
             }
 
             PackagesDirectory.CreateOrCleanDirectory();
-            await this.InstallDotNetSdk("8.x.x", "9.x.x");
         });
 
     Target Restore => _ => _

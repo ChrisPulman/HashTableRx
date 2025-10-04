@@ -15,11 +15,15 @@ namespace CP.Collections;
 /// Represents a collection of key/value pairs that are organized based on the hash code of the key.
 /// </summary>
 [Serializable]
-public class HashTable : Hashtable, IObservable<(string key, object? value)>, ICancelable, ICollection, IEnumerable
+public class HashTable : IObservable<(string key, object? value)>, ICancelable, ICollection, IEnumerable
 {
+    // Fields
+    private readonly Dictionary<string, object?> _dict = [];
     private readonly SingleAssignmentDisposable _subscription = new();
     private readonly IScheduler _scheduler;
+    private bool _disposed;
 
+    // Constructors
     /// <summary>
     /// Initializes a new instance of the <see cref="HashTable"/> class.
     /// </summary>
@@ -29,7 +33,7 @@ public class HashTable : Hashtable, IObservable<(string key, object? value)>, IC
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="HashTable"/> class.
+    /// Initializes a new instance of the <see cref="HashTable"/> class with a scheduler.
     /// </summary>
     /// <param name="scheduler">The scheduler.</param>
     public HashTable(IScheduler scheduler)
@@ -47,7 +51,7 @@ public class HashTable : Hashtable, IObservable<(string key, object? value)>, IC
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="HashTable"/> class.
+    /// Initializes a new instance of the <see cref="HashTable"/> class with a source observable.
     /// </summary>
     /// <param name="source">The source.</param>
     public HashTable(IObservable<(string key, object? value)> source)
@@ -56,7 +60,7 @@ public class HashTable : Hashtable, IObservable<(string key, object? value)>, IC
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="HashTable"/> class.
+    /// Initializes a new instance of the <see cref="HashTable"/> class with a scheduler and source observable.
     /// </summary>
     /// <param name="scheduler">The scheduler.</param>
     /// <param name="source">The source.</param>
@@ -82,11 +86,29 @@ public class HashTable : Hashtable, IObservable<(string key, object? value)>, IC
         Dispose(false);
     }
 
+    // Properties
     /// <summary>
-    /// Gets the source.
+    /// Gets the number of elements contained in the collection.
     /// </summary>
-    /// <value>The source.</value>
-    public IObservable<(string key, object? value)>? Source { get; private set; }
+    public int Count => _dict.Count;
+
+    /// <summary>
+    /// Gets the keys.
+    /// </summary>
+    /// <value>
+    /// The keys.
+    /// </value>
+    public string[] Keys => [.. _dict.Keys];
+
+    /// <summary>
+    /// Gets a value indicating whether access to the collection is synchronized (thread safe).
+    /// </summary>
+    public bool IsSynchronized => false;
+
+    /// <summary>
+    /// Gets an object that can be used to synchronize access to the collection.
+    /// </summary>
+    public object SyncRoot => ((ICollection)_dict).SyncRoot;
 
     /// <summary>
     /// Gets a value indicating whether the object is disposed.
@@ -94,37 +116,42 @@ public class HashTable : Hashtable, IObservable<(string key, object? value)>, IC
     public bool IsDisposed => _subscription.IsDisposed;
 
     /// <summary>
+    /// Gets the source observable.
+    /// </summary>
+    public IObservable<(string key, object? value)>? Source { get; private set; }
+
+    /// <summary>
     /// Gets the subject.
     /// </summary>
     protected ReplaySubject<(string key, object? value)> Subject { get; } = new(1);
 
+    // Indexer
     /// <summary>
-    /// Adds an element with the specified key and value into the <see cref="Hashtable"/>.
+    /// Gets or sets the value associated with the specified key.
+    /// </summary>
+    /// <param name="key">The key.</param>
+    /// <returns>The value associated with the specified key, or null if not found.</returns>
+    public object? this[object key]
+    {
+        get => _dict.TryGetValue(key?.ToString()!, out var value) ? value : null;
+        set => _dict[key?.ToString()!] = value;
+    }
+
+    // Public Methods
+    /// <summary>
+    /// Adds an element with the specified key and value into the table.
     /// </summary>
     /// <param name="key">The key of the element to add.</param>
-    /// <param name="value">The value of the element to add. The value can be null.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="key"/> is null.</exception>
-    /// <exception cref="ArgumentException">
-    /// An element with the same key already exists in the <see cref="Hashtable"/>.
-    /// </exception>
-    /// <exception cref="NotSupportedException">
-    /// The <see cref="Hashtable"/> is read-only.-or- The <see
-    /// cref="Hashtable"/> has a fixed size.
-    /// </exception>
-    public override void Add(object key, object? value) =>
-        AddToBase((key?.ToString()!, value));
+    /// <param name="value">The value of the element to add.</param>
+    public void Add(object key, object? value) => AddToBase((key?.ToString()!, value));
 
     /// <summary>
-    /// Removes all elements from the <see cref="Hashtable"/>.
+    /// Removes all elements from the table.
     /// </summary>
-    /// <exception cref="NotSupportedException">
-    /// The <see cref="Hashtable"/> is read-only.
-    /// </exception>
-    public override void Clear() => _scheduler?.Schedule(base.Clear);
+    public void Clear() => _scheduler?.Schedule(() => _dict.Clear());
 
     /// <summary>
-    /// Performs application-defined tasks associated with freeing, releasing, or resetting
-    /// unmanaged resources.
+    /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
     /// </summary>
     public void Dispose()
     {
@@ -133,61 +160,83 @@ public class HashTable : Hashtable, IObservable<(string key, object? value)>, IC
     }
 
     /// <summary>
-    /// Get(indexer get) called on scheduler, IObservable length is one.
+    /// Gets an observable for the value associated with the specified key.
     /// </summary>
-    /// <param name="key">The index.</param>
-    /// <returns>A Observable.</returns>
+    /// <param name="key">The key.</param>
+    /// <returns>An observable sequence containing the key and value.</returns>
     [UnconditionalSuppressMessage("AOT", "IL2026", Justification = "No reflection used; simple observable wrapper around indexer.")]
-    public IObservable<(string key, object value)> Get(object key) =>
+    public IObservable<(string key, object value)> Get(object key)
+    {
 #if NETSTANDARD2_0
-        Observable.Start(() => this[key], _scheduler).Select(x => (key.ToString(), x!));
+        return Observable.Start(() => this[key], _scheduler).Select(x => (key.ToString(), x!));
 #else
-        Observable.Start(() => this[key], _scheduler).Select(x => (key.ToString()!, x!));
+        return Observable.Start(() => this[key], _scheduler).Select(x => (key.ToString()!, x!));
 #endif
+    }
 
     /// <summary>
-    /// Removes the element with the specified key from the <see cref="Hashtable"/>.
+    /// Removes the element with the specified key from the table.
     /// </summary>
     /// <param name="key">The key of the element to remove.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="key"/> is null.</exception>
-    /// <exception cref="NotSupportedException">
-    /// The <see cref="Hashtable"/> is read-only.-or- The <see
-    /// cref="Hashtable"/> has a fixed size.
-    /// </exception>
-    public override void Remove(object key) =>
-        _scheduler.Schedule(() => base.Remove(key));
+    public void Remove(object key) => _scheduler.Schedule(() => _dict.Remove(key?.ToString()!));
 
     /// <summary>
     /// Subscribes the specified observer.
     /// </summary>
     /// <param name="observer">The observer.</param>
-    /// <returns>A Disposable.</returns>
-    public IDisposable Subscribe(IObserver<(string key, object? value)> observer) =>
-        Source!.Subscribe(observer);
+    /// <returns>A disposable subscription.</returns>
+    public IDisposable Subscribe(IObserver<(string key, object? value)> observer) => Source!.Subscribe(observer);
 
     /// <summary>
-    /// Disposes the specified disposing.
+    /// Copies the elements of the collection to an array, starting at a particular array index.
     /// </summary>
-    /// <param name="disposing">if set to <c>true</c> [disposing].</param>
+    /// <param name="array">The one-dimensional array that is the destination of the elements copied from collection.</param>
+    /// <param name="index">The zero-based index in array at which copying begins.</param>
+    public void CopyTo(System.Array array, int index) => ((ICollection)_dict).CopyTo(array, index);
+
+    /// <summary>
+    /// Returns an enumerator that iterates through the collection.
+    /// </summary>
+    /// <returns>An enumerator for the collection.</returns>
+    public IEnumerator GetEnumerator() => _dict.GetEnumerator();
+
+    /// <summary>
+    /// Determines whether the dictionary contains the specified key.
+    /// </summary>
+    /// <param name="key">The key to locate.</param>
+    /// <returns>true if the dictionary contains an element with the specified key; otherwise, false.</returns>
+    public bool ContainsKey(object key) => _dict.ContainsKey(key?.ToString()!);
+
+    // Protected Methods
+    /// <summary>
+    /// Releases the unmanaged resources used by the HashTable and optionally releases the managed resources.
+    /// </summary>
+    /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
     protected virtual void Dispose(bool disposing)
     {
-        if (disposing)
+        if (!_disposed)
         {
-            _subscription?.Dispose();
-            Subject.Dispose();
+            if (disposing)
+            {
+                _subscription?.Dispose();
+                Subject.Dispose();
+            }
+
+            _disposed = true;
         }
     }
 
+    // Private Methods
     /// <summary>
-    /// Adds to base.
+    /// Adds a key/value pair to the dictionary and notifies observers.
     /// </summary>
-    /// <param name="keyValuePair">The key value pair.</param>
+    /// <param name="keyValuePair">The key/value pair.</param>
     private void AddToBase((string key, object? value) keyValuePair)
     {
         try
         {
             Subject.OnNext(keyValuePair);
-            base.Add(keyValuePair.key, keyValuePair.value);
+            _dict.Add(keyValuePair.key, keyValuePair.value);
         }
         catch (Exception ex)
         {
@@ -196,7 +245,7 @@ public class HashTable : Hashtable, IObservable<(string key, object? value)>, IC
     }
 
     /// <summary>
-    /// Setup the source.
+    /// Sets up the source observable.
     /// </summary>
     private void SetupSource()
     {
