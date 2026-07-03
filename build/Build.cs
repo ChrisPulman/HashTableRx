@@ -12,7 +12,9 @@ using CP.BuildTools;
 using Nuke.Common.Utilities;
 using System.Linq;
 
-partial class Build : NukeBuild
+namespace HashTableRx.Build;
+
+sealed partial class Build : NukeBuild
 {
     public static int Main() => Execute<Build>(x => x.Test);
 
