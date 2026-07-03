@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <PackageReference Include="CP.Nuke.BuildTools" Version="1.0.94" />
+    <PackageReference Include="Microsoft.Build" Version="18.7.1" />
     <PackageReference Include="Microsoft.Build.Tasks.Core" Version="18.7.1" />
     <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.85" />
     <PackageReference Include="NuGet.Packaging" Version="7.6.0" />
