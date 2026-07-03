@@ -11,6 +11,7 @@
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
     <Configurations>Debug;Release</Configurations>
     <RunAnalyzers>false</RunAnalyzers>
+    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 
   <ItemGroup>
