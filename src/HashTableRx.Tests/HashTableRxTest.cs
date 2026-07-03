@@ -1,72 +1,72 @@
 ﻿// Copyright (c) Chris Pulman. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Reactive.Disposables;
-using System.Reactive.Linq;
+using ReactiveUI.Primitives.Disposables;
+using TUnit.Assertions;
+using TUnit.Core;
 
 namespace CP.Collections.Tests;
 
 /// <summary>
 /// UnitTest1.
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="HashTableRxTest"/> class.
-/// </remarks>
-/// <param name="fixture">The hash table rx fixture.</param>
-public class HashTableRxTest(HashTableRxFixture fixture) : IClassFixture<HashTableRxFixture>
+public class HashTableRxTest
 {
     /// <summary>
     /// Test1s this instance.
     /// </summary>
-    [Fact]
-    public void HashTableRxCanReadValuesDirectly()
+    [Test]
+    public async Task HashTableRxCanReadValuesDirectly()
     {
-        fixture.HtRx["CalibrationDataValid"] = false;
-        var t = (bool?)fixture.HtRx["CalibrationDataValid"];
-        Assert.False(t);
+        var htRx = HashTableRxFixture.CreateHashTable();
+        htRx["CalibrationDataValid"] = false;
+        var t = (bool?)htRx["CalibrationDataValid"];
+        await Assert.That(t).IsFalse();
 
-        fixture.HtRx["Casing.Temperature.PV.Value"] = 0.0f;
-        var t2 = (float?)fixture.HtRx["Casing.Temperature.PV.Value"];
-        Assert.Equal(0.0f, t2);
+        htRx["Casing.Temperature.PV.Value"] = 0.0f;
+        var t2 = (float?)htRx["Casing.Temperature.PV.Value"];
+        await Assert.That(t2).IsEqualTo(0.0f);
     }
 
     /// <summary>
     /// Hashes the table rx can write values.
     /// </summary>
-    [Fact]
-    public void HashTableRxCanWriteValuesDirectly()
+    [Test]
+    public async Task HashTableRxCanWriteValuesDirectly()
     {
-        fixture.HtRx["CalibrationDataValid"] = true;
-        var t = (bool?)fixture.HtRx["CalibrationDataValid"];
-        Assert.True(t);
+        var htRx = HashTableRxFixture.CreateHashTable();
+        htRx["CalibrationDataValid"] = true;
+        var t = (bool?)htRx["CalibrationDataValid"];
+        await Assert.That(t).IsTrue();
 
-        fixture.HtRx["Casing.Temperature.PV.Value"] = 1.0f;
-        var t2 = (float?)fixture.HtRx["Casing.Temperature.PV.Value"];
-        Assert.Equal(1.0f, t2);
+        htRx["Casing.Temperature.PV.Value"] = 1.0f;
+        var t2 = (float?)htRx["Casing.Temperature.PV.Value"];
+        await Assert.That(t2).IsEqualTo(1.0f);
     }
 
     /// <summary>
     /// Hashes the table rx can read values from observable.
     /// </summary>
-    [Fact]
-    public void HashTableRxCanReadValuesFromObservable()
+    [Test]
+    public async Task HashTableRxCanReadValuesFromObservable()
     {
-        var disposables = new CompositeDisposable();
-        fixture.HtRx["CalibrationDataValid"] = false;
-        var t = (bool?)fixture.HtRx["CalibrationDataValid"];
-        Assert.False(t);
+        var htRx = HashTableRxFixture.CreateHashTable();
+        var disposables = new MultipleDisposable();
+        htRx["CalibrationDataValid"] = false;
+        var t = (bool?)htRx["CalibrationDataValid"];
+        await Assert.That(t).IsFalse();
         var boolResullt = default(bool?);
-        disposables.Add(fixture.HtRx.Observe<bool>("CalibrationDataValid").Subscribe(x => boolResullt = x));
-        fixture.HtRx["CalibrationDataValid"] = true;
-        Assert.True(boolResullt);
+        disposables.Add(htRx.Observe<bool>("CalibrationDataValid").Subscribe(new TestObserver<bool>(x => boolResullt = x)));
+        htRx["CalibrationDataValid"] = true;
+        await Assert.That(boolResullt).IsTrue();
 
         var floatResult = default(float?);
-        fixture.HtRx["Casing.Temperature.PV.Value"] = 0.0f;
-        var t2 = (float?)fixture.HtRx["Casing.Temperature.PV.Value"];
-        Assert.Equal(0.0f, t2);
-        disposables.Add(fixture.HtRx.Observe<float>("Casing.Temperature.PV.Value").Subscribe(x => floatResult = x));
-        fixture.HtRx["Casing.Temperature.PV.Value"] = 1.0f;
-        Assert.Equal(1.0f, floatResult);
+        htRx["Casing.Temperature.PV.Value"] = 0.0f;
+        var t2 = (float?)htRx["Casing.Temperature.PV.Value"];
+        await Assert.That(t2).IsEqualTo(0.0f);
+        disposables.Add(htRx.Observe<float>("Casing.Temperature.PV.Value").Subscribe(new TestObserver<float>(x => floatResult = x)));
+        htRx["Casing.Temperature.PV.Value"] = 1.0f;
+        await Assert.That(floatResult).IsEqualTo(1.0f);
 
         disposables.Dispose();
     }
@@ -74,30 +74,32 @@ public class HashTableRxTest(HashTableRxFixture fixture) : IClassFixture<HashTab
     /// <summary>
     /// Hashes the table rx can read values.
     /// </summary>
-    [Fact]
-    public void HashTableRxCanReadValues()
+    [Test]
+    public async Task HashTableRxCanReadValues()
     {
-        fixture.HtRx["CalibrationDataValid"] = false;
-        var t = fixture.HtRx.Value<bool>("CalibrationDataValid");
-        Assert.False(t);
+        var htRx = HashTableRxFixture.CreateHashTable();
+        htRx["CalibrationDataValid"] = false;
+        var t = htRx.Value<bool>("CalibrationDataValid");
+        await Assert.That(t).IsFalse();
 
-        fixture.HtRx["Casing.Temperature.PV.Value"] = 0.0f;
-        var t2 = fixture.HtRx.Value<float>("Casing.Temperature.PV.Value");
-        Assert.Equal(0.0f, t2);
+        htRx["Casing.Temperature.PV.Value"] = 0.0f;
+        var t2 = htRx.Value<float>("Casing.Temperature.PV.Value");
+        await Assert.That(t2).IsEqualTo(0.0f);
     }
 
     /// <summary>
     /// Hashes the table rx can write values.
     /// </summary>
-    [Fact]
-    public void HashTableRxCanWriteValues()
+    [Test]
+    public async Task HashTableRxCanWriteValues()
     {
-        fixture.HtRx.Value("CalibrationDataValid", true);
-        var t = fixture.HtRx.Value<bool>("CalibrationDataValid");
-        Assert.True(t);
+        var htRx = HashTableRxFixture.CreateHashTable();
+        htRx.Value("CalibrationDataValid", true);
+        var t = htRx.Value<bool>("CalibrationDataValid");
+        await Assert.That(t).IsTrue();
 
-        fixture.HtRx.Value("Casing.Temperature.PV.Value", 1.0f);
-        var t2 = fixture.HtRx.Value<float>("Casing.Temperature.PV.Value");
-        Assert.Equal(1.0f, t2);
+        htRx.Value("Casing.Temperature.PV.Value", 1.0f);
+        var t2 = htRx.Value<float>("Casing.Temperature.PV.Value");
+        await Assert.That(t2).IsEqualTo(1.0f);
     }
 }

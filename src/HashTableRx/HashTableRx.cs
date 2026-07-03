@@ -1,679 +1,570 @@
-﻿// Copyright (c) Chris Pulman. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// Copyright (c) 2022-2026 Chris Pulman. All rights reserved.
+// Chris Pulman licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for full license information.
 
-using System.Collections;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
-using System.Reactive.Linq;
-using System.Reactive.Subjects;
 using System.Reflection;
 using System.Runtime.Serialization;
 
+#if REACTIVE_SHIM
+namespace CP.Collections.Reactive;
+#else
 namespace CP.Collections;
+#endif
 
-/// <summary>
-/// A Specialized HashTable providing on change notification and allowing reflection of objects
-/// to a list. The values are then get-able and set-able via it's path i.e. thisClass.thatClass.thisValue.
-/// </summary>
+/// <summary>Provides change notification and dotted-path access over values reflected from structured objects.</summary>
 [Serializable]
 public class HashTableRx : HashTable, IHashTableRx
 {
-    private const string PropertyInfo = nameof(PropertyInfo);
-    private const string FieldInfo = nameof(FieldInfo);
-    private const string Data = nameof(Data);
+    /// <summary>Stores the reflected structure data object in <see cref="Tag"/>.</summary>
+    private const string DataKey = "Data";
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="HashTableRx" /> class.
-    /// </summary>
-    /// <param name="useUpperCase">if set to <c>true</c> [is upper case].</param>
+    /// <summary>Stores the reflected fields in <see cref="Tag"/>.</summary>
+    private const string FieldInfoKey = "FieldInfo";
+
+    /// <summary>Stores the reflected properties in <see cref="Tag"/>.</summary>
+    private const string PropertyInfoKey = "PropertyInfo";
+
+    /// <summary>Initializes a new instance of the <see cref="HashTableRx"/> class.</summary>
+    /// <param name="useUpperCase">A value indicating whether dotted paths are normalized to upper case.</param>
     public HashTableRx(bool useUpperCase)
     {
         UseUpperCase = useUpperCase;
         Tag = [];
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="HashTableRx"/> class.
-    /// </summary>
-    /// <param name="source">The source.</param>
+    /// <summary>Initializes a new instance of the <see cref="HashTableRx"/> class.</summary>
+    /// <param name="source">The source observable that publishes table updates.</param>
     public HashTableRx(IObservable<(string key, object? value)> source)
         : base(source) => Tag = [];
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="HashTableRx"/> class.
-    /// </summary>
-    /// <param name="info">The Serialization Info.</param>
-    /// <param name="context">The Context.</param>
-    [SuppressMessage("Roslynator", "RCS1231:Make parameter ref read-only", Justification = "not required.")]
+    /// <summary>Initializes a new instance of the <see cref="HashTableRx"/> class.</summary>
+    /// <param name="info">The serialization information.</param>
+    /// <param name="context">The streaming context.</param>
+    [SuppressMessage("Roslynator", "RCS1231:Make parameter ref read-only", Justification = "Required by serialization constructor shape.")]
     protected HashTableRx(SerializationInfo info, StreamingContext context) =>
         Tag = [];
 
-    /// <summary>
-    /// Occurs when a property value changes.
-    /// </summary>
+    /// <summary>Occurs when a property value changes.</summary>
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    /// <summary>
-    /// Occurs when a property value is changing.
-    /// </summary>
+    /// <summary>Occurs when a property value is changing.</summary>
     public event PropertyChangingEventHandler? PropertyChanging;
 
-    /// <summary>
-    /// Gets or sets a value indicating whether this instance uses upper case.
-    /// </summary>
-    /// <value>
-    ///   <c>true</c> if this instance uses upper case; otherwise, <c>false</c>.
-    /// </value>
+    /// <summary>Gets an observable sequence of all changed values.</summary>
+    public IObservable<(string key, object? value)> ObserveAll => Subject.DistinctUntilChanged();
+
+    /// <summary>Gets the caller-owned metadata table associated with this instance.</summary>
+    public HashTable Tag { get; }
+
+    /// <summary>Gets or sets a value indicating whether all named paths are normalized to upper case.</summary>
     public bool UseUpperCase { get; set; }
 
-    /// <summary>
-    /// Gets the observe all.
-    /// </summary>
-    /// <value>The observe all.</value>
-    public IObservable<(string key, object? value)> ObserveAll => Subject.DistinctUntilChanged().Publish().RefCount();
+    /// <summary>Gets the backing structured object after applying current table values.</summary>
+    public object? Structure
+    {
+        [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+        get
+        {
+            var data = Tag[DataKey];
+            if (data is null)
+            {
+                return null;
+            }
 
-    /// <summary>
-    /// Gets the tag.
-    /// </summary>
-    /// <value>The tag.</value>
-    public HashTable? Tag { get; }
+            ApplyTableToObject(data, data.GetType(), this);
+            return data;
+        }
+    }
 
-    /// <summary>
-    /// Gets or sets the <see cref="object"/> with the specified full name.
-    /// </summary>
-    /// <value>The <see cref="object"/>.</value>
-    /// <param name="fullName">The full name.</param>
-    /// <returns>An object.</returns>
+    /// <summary>Gets or sets the value at the specified dotted path.</summary>
+    /// <param name="fullName">The dotted value path.</param>
+    /// <returns>The current value, or null when the path is not present.</returns>
     public object? this[string fullName]
     {
         get => GetFullName(fullName);
         set => SetFullName(fullName, value);
     }
 
-    /// <summary>
-    /// Gets or sets the <see cref="object"/> mapped via reflection to/from the backing structure.
-    /// </summary>
-    /// <value>The <see cref="object"/>.</value>
-    /// <param name="useReflection">if set to <c>true</c> [use reflection].</param>
-    /// <returns>An object.</returns>
-    public object? this[bool useReflection]
-    {
-        [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
-        get
-        {
-            var exHashtable = this;
-            return GetByReflection(ref exHashtable);
-        }
-
-        [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
-        set
-        {
-            if (value != null)
-            {
-                var exHashtable = this;
-                SetByReflection(ref exHashtable, value);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Gets or sets the <see cref="HashTableRx" /> with the specified _default.
-    /// </summary>
-    /// <value>
-    /// The <see cref="HashTableRx" />.
-    /// </value>
-    /// <param name="unused">if set to <c>true</c> [unused].</param>
-    /// <param name="key">The key.</param>
-    /// <returns>
-    /// A reactive Hash Table.
-    /// </returns>
-    [SuppressMessage("Roslynator", "RCS1163:Unused parameter", Justification = "intended alternate")]
-    private HashTableRx? this[bool unused, object? key]
-    {
-        get => (HashTableRx?)this[key!] ?? new HashTableRx(UseUpperCase);
-        set => this[key!] = value;
-    }
-
-    /// <summary>
-    /// Gets or sets the <see cref="object"/> with the specified key.
-    /// </summary>
-    /// <value>The <see cref="object"/>.</value>
-    /// <param name="key">The key.</param>
-    /// <param name="isEnd">if set to <c>true</c> [is end].</param>
-    /// <returns>An object.</returns>
-    [SuppressMessage("Roslynator", "RCS1163:Unused parameter", Justification = "intended alternate")]
-    private object? this[object? key, bool isEnd]
-    {
-        get => key == null ? null : this[key];
-
-        set
-        {
-            if (key != null)
-            {
-                this[key] = value;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Adds an element with the specified key and value into the <see cref="Hashtable"/>.
-    /// </summary>
+    /// <summary>Adds an element with the specified key and value into the <see cref="HashTable"/>.</summary>
     /// <param name="key">The key of the element to add.</param>
-    /// <param name="value">The value of the element to add. The value can be null.</param>
+    /// <param name="value">The value of the element to add.</param>
     public new void Add(object key, object? value) => base.Add(key, value);
 
-    /// <summary>
-    /// Adds an element with the specified key and value into the <see cref="Hashtable"/>.
-    /// </summary>
+    /// <summary>Adds a nested hash table with the specified key into the <see cref="HashTable"/>.</summary>
     /// <param name="key">The key of the element to add.</param>
-    /// <param name="value">The value of the element to add. The value can be null.</param>
+    /// <param name="value">The nested table to add.</param>
     public void Add(object key, HashTableRx value) => base.Add(key, value);
 
-    /// <summary>
-    /// Determines whether the specified key contains key.
-    /// </summary>
-    /// <param name="key">The key.</param>
-    /// <param name="searchAll">if set to <c>true</c> [search all].</param>
-    /// <returns>A Boolean.</returns>
+    /// <summary>Determines whether this table contains the key, optionally searching nested tables.</summary>
+    /// <param name="key">The key to locate.</param>
+    /// <param name="searchAll">A value indicating whether nested tables should be searched.</param>
+    /// <returns><c>true</c> when the key exists; otherwise, <c>false</c>.</returns>
     public bool ContainsKey(object key, bool searchAll) =>
-        searchAll ? ContainsKey(key) || HtContainsKey(key, Keys) : ContainsKey(key);
+        searchAll ? ContainsKeyRecursive(key) : ContainsKey(key);
 
-    /// <summary>
-    /// Gets the by reflection.
-    /// </summary>
-    /// <param name="htrx">The Reactive Hash Table.</param>
-    /// <returns>An object.</returns>
+    /// <summary>Loads a structured object into the reactive table.</summary>
+    /// <param name="value">The structured object to load.</param>
     [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
-    private static object? GetByReflection(ref HashTableRx htrx)
+    public void SetStructure(object? value)
     {
-        if (htrx.Tag?.Count == 0)
+        if (value is null)
+        {
+            return;
+        }
+
+        ClearBaseValues();
+        var type = value.GetType();
+        Tag[DataKey] = value;
+        Tag[FieldInfoKey] = type.GetFields();
+        Tag[PropertyInfoKey] = type.GetProperties();
+        LoadObject(value, type, this, null);
+    }
+
+    /// <summary>Applies all stored table values to an object instance.</summary>
+    /// <param name="target">The object to update.</param>
+    /// <param name="type">The reflected target type.</param>
+    /// <param name="table">The table that stores current values.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private static void ApplyTableToObject(object target, Type type, HashTableRx table)
+    {
+        ApplyPropertiesToObject(target, type.GetProperties(), table);
+        ApplyFieldsToObject(target, type.GetFields(), table);
+    }
+
+    /// <summary>Applies stored field values to an object instance.</summary>
+    /// <param name="target">The object to update.</param>
+    /// <param name="fields">The reflected fields.</param>
+    /// <param name="table">The table that stores current values.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private static void ApplyFieldsToObject(object target, FieldInfo[] fields, HashTableRx table)
+    {
+        for (var index = 0; index < fields.Length; index++)
+        {
+            ApplyFieldToObject(target, fields[index], table);
+        }
+    }
+
+    /// <summary>Applies a stored field value to an object instance.</summary>
+    /// <param name="target">The object to update.</param>
+    /// <param name="field">The reflected field.</param>
+    /// <param name="table">The table that stores current values.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private static void ApplyFieldToObject(object target, FieldInfo field, HashTableRx table)
+    {
+        if (field.FieldType.IsPrimitiveArray())
+        {
+            _ = TrySetFieldValue(target, field, table.GetBaseValue(field.Name));
+            return;
+        }
+
+        if (table.GetBaseValue(field.Name) is not HashTableRx childTable)
+        {
+            return;
+        }
+
+        var childData = field.GetValue(target);
+        if (childData is null)
+        {
+            return;
+        }
+
+        ApplyTableToObject(childData, field.FieldType, childTable);
+        _ = TrySetFieldValue(target, field, childData);
+    }
+
+    /// <summary>Applies stored property values to an object instance.</summary>
+    /// <param name="target">The object to update.</param>
+    /// <param name="properties">The reflected properties.</param>
+    /// <param name="table">The table that stores current values.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private static void ApplyPropertiesToObject(object target, PropertyInfo[] properties, HashTableRx table)
+    {
+        for (var index = 0; index < properties.Length; index++)
+        {
+            ApplyPropertyToObject(target, properties[index], table);
+        }
+    }
+
+    /// <summary>Applies a stored property value to an object instance.</summary>
+    /// <param name="target">The object to update.</param>
+    /// <param name="property">The reflected property.</param>
+    /// <param name="table">The table that stores current values.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private static void ApplyPropertyToObject(object target, PropertyInfo property, HashTableRx table)
+    {
+        if (!CanUseProperty(property))
+        {
+            return;
+        }
+
+        if (property.PropertyType.IsPrimitiveArray())
+        {
+            _ = property.CanWrite && TrySetPropertyValue(target, property, table.GetBaseValue(property.Name));
+            return;
+        }
+
+        if (table.GetBaseValue(property.Name) is not HashTableRx childTable)
+        {
+            return;
+        }
+
+        var childData = TryGetPropertyValue(target, property);
+        if (childData is null)
+        {
+            return;
+        }
+
+        ApplyTableToObject(childData, property.PropertyType, childTable);
+        _ = property.CanWrite && TrySetPropertyValue(target, property, childData);
+    }
+
+    /// <summary>Builds a dotted child path from the optional parent and current member name.</summary>
+    /// <param name="parentPath">The optional parent path.</param>
+    /// <param name="name">The member name.</param>
+    /// <returns>The combined dotted path.</returns>
+    private static string CombineName(string? parentPath, string name) =>
+        string.IsNullOrEmpty(parentPath) ? name : $"{parentPath}.{name}";
+
+    /// <summary>Determines whether the property can be used for reflection mapping.</summary>
+    /// <param name="property">The property to inspect.</param>
+    /// <returns><c>true</c> when the property can be read and is not an indexer; otherwise, <c>false</c>.</returns>
+    private static bool CanUseProperty(PropertyInfo property) =>
+        property.CanRead && property.GetIndexParameters().Length == 0;
+
+    /// <summary>Gets a reflected property value, returning null when the member cannot be read.</summary>
+    /// <param name="source">The object that owns the property.</param>
+    /// <param name="property">The property to read.</param>
+    /// <returns>The property value, or null when reading fails.</returns>
+    private static object? TryGetPropertyValue(object source, PropertyInfo property)
+    {
+        try
+        {
+            return property.GetValue(source, null);
+        }
+        catch (Exception ex) when (IsExpectedReflectionException(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Determines whether an exception is an expected reflection access failure.</summary>
+    /// <param name="ex">The exception to inspect.</param>
+    /// <returns><c>true</c> when the exception is an expected reflection failure; otherwise, <c>false</c>.</returns>
+    private static bool IsExpectedReflectionException(Exception ex) =>
+        ex is ArgumentException or InvalidOperationException or MethodAccessException or NotSupportedException or TargetException or TargetInvocationException;
+
+    /// <summary>Sets a reflected field value.</summary>
+    /// <param name="target">The object that owns the field.</param>
+    /// <param name="field">The field to update.</param>
+    /// <param name="value">The value to set.</param>
+    /// <returns><c>true</c> when the value was written; otherwise, <c>false</c>.</returns>
+    private static bool TrySetFieldValue(object target, FieldInfo field, object? value)
+    {
+        try
+        {
+            field.SetValue(target, value);
+            return true;
+        }
+        catch (Exception ex) when (IsExpectedReflectionException(ex))
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Sets a reflected property value.</summary>
+    /// <param name="target">The object that owns the property.</param>
+    /// <param name="property">The property to update.</param>
+    /// <param name="value">The value to set.</param>
+    /// <returns><c>true</c> when the value was written; otherwise, <c>false</c>.</returns>
+    private static bool TrySetPropertyValue(object target, PropertyInfo property, object? value)
+    {
+        try
+        {
+            property.SetValue(target, value, null);
+            return true;
+        }
+        catch (Exception ex) when (IsExpectedReflectionException(ex))
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Gets or creates a nested table for the specified member name.</summary>
+    /// <param name="table">The table that owns the child.</param>
+    /// <param name="name">The child member name.</param>
+    /// <returns>The existing or newly created nested table.</returns>
+    private static HashTableRx GetOrCreateChildTable(HashTableRx table, string name) =>
+        table.GetBaseValue(name) is HashTableRx childTable ? childTable : new(table.UseUpperCase);
+
+    /// <summary>Gets or creates a nested table and clears existing values for a structure reload.</summary>
+    /// <param name="table">The table that owns the child.</param>
+    /// <param name="name">The child member name.</param>
+    /// <returns>The existing or newly created nested table.</returns>
+    private static HashTableRx GetOrCreateReloadChildTable(HashTableRx table, string name)
+    {
+        var childTable = GetOrCreateChildTable(table, name);
+        childTable.ClearBaseValues();
+        return childTable;
+    }
+
+    /// <summary>Reads a primitive value and converts TwinCAT string wrappers when needed.</summary>
+    /// <param name="source">The source object to read.</param>
+    /// <param name="memberType">The reflected member type.</param>
+    /// <param name="readValue">The value reader.</param>
+    /// <param name="value">The primitive or converted value.</param>
+    /// <returns><c>true</c> when the value was read; otherwise, <c>false</c>.</returns>
+    [RequiresUnreferencedCode("Uses reflection to locate TwinCAT string conversion helpers.")]
+    private static bool TryReadPrimitiveValue(object source, Type memberType, Func<object?> readValue, out object? value)
+    {
+        try
+        {
+            value = readValue();
+            if (!memberType.IsTwinCATStringArray())
+            {
+                return true;
+            }
+
+            var converter = source.GetType().GetMethod("ToStringArray", BindingFlags.Public | BindingFlags.Static);
+            value = converter?.Invoke(null, [value]) as string[];
+            return true;
+        }
+        catch (Exception ex) when (IsExpectedReflectionException(ex))
+        {
+            value = null;
+            return false;
+        }
+    }
+
+    /// <summary>Gets the value at the specified dotted path.</summary>
+    /// <param name="fullName">The dotted path to read.</param>
+    /// <returns>The value, or null when the path is missing.</returns>
+    private object? GetFullName(string? fullName)
+    {
+        var names = NormalizePath(fullName)?.Split('.');
+        if (names is null || names.Length == 0)
         {
             return null;
         }
 
-        var data = htrx.Tag?[Data];
-        try
+        var table = this;
+        for (var index = 0; index < names.Length - 1; index++)
         {
-            if (htrx.Tag?[PropertyInfo] != null)
+            var name = names[index];
+            if (table.GetBaseValue(name) is not HashTableRx childTable)
             {
-                foreach (PropertyInfo propertyInfo in (IEnumerable?)htrx.Tag[PropertyInfo]!)
-                {
-                    if (propertyInfo?.PropertyType?.IsPrimativeArray() == true)
-                    {
-                        propertyInfo?.SetValue(data, htrx[propertyInfo.Name, true], null);
-                    }
-                }
+                return null;
             }
-        }
-        catch
-        {
+
+            table = childTable;
         }
 
-        if (htrx.Tag?[FieldInfo] != null)
-        {
-            try
-            {
-                if (htrx.Tag[FieldInfo] != null)
-                {
-                    foreach (FieldInfo fieldInfo in (IEnumerable?)htrx.Tag[FieldInfo]!)
-                    {
-                        if (fieldInfo?.FieldType?.IsPrimativeArray() == true)
-                        {
-                            fieldInfo?.SetValue(data, htrx[fieldInfo.Name, true]);
-                        }
-                        else
-                        {
-                            var eHt = htrx;
-                            var name = fieldInfo?.Name;
-                            var item = eHt[true, name];
-                            var obj = fieldInfo?.GetValue(data);
-                            GetFieldByReflection(fieldInfo, ref item!, ref obj);
-                            eHt[true, name] = item;
-                        }
-                    }
-                }
-            }
-            catch
-            {
-            }
-        }
-
-        return data;
+        return table.GetBaseValue(names[^1]);
     }
 
-    /// <summary>
-    /// Gets the by reflection.
-    /// </summary>
-    /// <param name="fi">The field info.</param>
-    /// <param name="htrx">The Reactive Hash Table.</param>
-    /// <param name="data">The data.</param>
-    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
-    private static void GetFieldByReflection(FieldInfo? fi, ref HashTableRx htrx, ref object? data)
+    /// <summary>Determines whether this table or any nested table contains the specified key.</summary>
+    /// <param name="key">The key to locate.</param>
+    /// <returns><c>true</c> when the key exists; otherwise, <c>false</c>.</returns>
+    private bool ContainsKeyRecursive(object key)
     {
-        var properties = fi?.FieldType.GetProperties();
-        for (var i = 0; i < checked(properties?.Length); i++)
+        if (ContainsKey(key))
         {
-            var propertyInfo = properties[i];
-            if (propertyInfo?.PropertyType.IsPrimativeArray() == true)
+            return true;
+        }
+
+        foreach (var tableKey in Keys)
+        {
+            if (GetBaseValue(tableKey) is HashTableRx table && table.ContainsKey(key, searchAll: true))
             {
-                propertyInfo.SetValue(data, htrx[propertyInfo.Name, true], null);
+                return true;
             }
-        }
-
-        var fields = fi?.FieldType.GetFields();
-        for (var j = 0; j < checked(fields?.Length); j++)
-        {
-            var fieldInfo = fields[j];
-            if (fieldInfo.FieldType.IsPrimativeArray())
-            {
-                fieldInfo.SetValue(data, htrx[fieldInfo.Name, true]);
-            }
-            else
-            {
-                var htRx = htrx;
-                var name = fieldInfo.Name;
-                var item = htRx[true, name];
-                var subData = fieldInfo.GetValue(data);
-                GetFieldByReflection(fieldInfo, ref item!, ref subData);
-                htRx[true, name] = item;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Gets the full name.
-    /// </summary>
-    /// <param name="fullName">The full name.</param>
-    /// <param name="htrx">The EHT.</param>
-    /// <returns>An object.</returns>
-    private static object? GetFullName(string? fullName, ref HashTableRx htrx)
-    {
-        if (htrx == null)
-        {
-            return null;
-        }
-
-        if (htrx.UseUpperCase)
-        {
-            fullName = fullName?.ToUpper();
-        }
-
-        var names = fullName?.Split('.');
-        var firstName = names![0];
-        if (checked(names.Length) <= 1)
-        {
-            return htrx[firstName, true];
-        }
-
-        htrx[true, firstName] ??= new(htrx.UseUpperCase);
-
-        var str = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
-        var htRx = htrx;
-        var item = htRx[true, firstName];
-        var obj = GetFullName(str, ref item!);
-        htRx[true, firstName] = item;
-        return obj;
-    }
-
-    /// <summary>
-    /// The Hash Table contains key.
-    /// </summary>
-    /// <param name="key">The key.</param>
-    /// <param name="hashTableBase">The Hash Table base.</param>
-    /// <returns>A Boolean.</returns>
-    private static bool HtContainsKey(object key, IEnumerable hashTableBase)
-    {
-        try
-        {
-            foreach (HashTable ht in hashTableBase)
-            {
-                if (ht.ContainsKey(key))
-                {
-                    return true;
-                }
-            }
-        }
-        catch
-        {
         }
 
         return false;
     }
 
-    /// <summary>
-    /// Sets the full name.
-    /// </summary>
-    /// <param name="fullName">The full name.</param>
-    /// <param name="htrx">The Reactive HashTable.</param>
-    /// <param name="value">The value.</param>
-    private static void SetFullName(string? fullName, ref HashTableRx htrx, object value)
-    {
-        if (htrx.UseUpperCase)
-        {
-            fullName = fullName?.ToUpper();
-        }
-
-        var names = fullName?.Split('.');
-        var firstName = names![0];
-        if (checked(names.Length) <= 1)
-        {
-            htrx[firstName, true] = value;
-        }
-        else
-        {
-            var remainingNames = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
-            var htRx = htrx;
-            var item = htRx[true, firstName];
-            SetFullName(remainingNames, ref item!, value);
-            htRx[true, firstName] = item;
-        }
-    }
-
-    /// <summary>
-    /// Gets the full name.
-    /// </summary>
-    /// <param name="fullName">The full name.</param>
-    /// <returns>An object.</returns>
-    private object? GetFullName(string? fullName)
-    {
-        if (UseUpperCase)
-        {
-            fullName = fullName?.ToUpper();
-        }
-
-        var names = fullName?.Split('.');
-        var firstName = names![0];
-        if (checked(names.Length) <= 1)
-        {
-            return base[firstName];
-        }
-
-        var remainingNames = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
-        if (base[firstName] is not HashTableRx item)
-        {
-            // Not a nested table; cannot traverse further
-            return null;
-        }
-
-        var obj = GetFullName(remainingNames, ref item!);
-        base[firstName] = item;
-        return obj;
-    }
-
-    /// <summary>
-    /// Sets the by reflection.
-    /// </summary>
-    /// <param name="htrx">The EHT.</param>
-    /// <param name="value">The value.</param>
+    /// <summary>Loads all reflected fields into a table.</summary>
+    /// <param name="source">The source object to read.</param>
+    /// <param name="fields">The reflected fields.</param>
+    /// <param name="table">The table to populate.</param>
+    /// <param name="parentPath">The optional parent path.</param>
     [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
-    private void SetByReflection(ref HashTableRx htrx, object value)
+    private void LoadFields(object source, FieldInfo[] fields, HashTableRx table, string? parentPath)
     {
-        if (value == null)
+        for (var index = 0; index < fields.Length; index++)
+        {
+            LoadField(source, fields[index], table, parentPath);
+        }
+    }
+
+    /// <summary>Loads one reflected field into a table.</summary>
+    /// <param name="source">The source object to read.</param>
+    /// <param name="field">The reflected field.</param>
+    /// <param name="table">The table to populate.</param>
+    /// <param name="parentPath">The optional parent path.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private void LoadField(object source, FieldInfo field, HashTableRx table, string? parentPath)
+    {
+        var name = field.Name;
+        var fullName = CombineName(parentPath, name);
+        if (field.FieldType.IsPrimitiveArray())
+        {
+            if (TryReadPrimitiveValue(source, field.FieldType, () => field.GetValue(source), out var value))
+            {
+                SetLeafValue(table, name, fullName, value);
+            }
+
+            return;
+        }
+
+        LoadNestedValue(field.GetValue(source), field.FieldType, table, name, fullName, field);
+    }
+
+    /// <summary>Loads a nested reflected member into a child table.</summary>
+    /// <param name="value">The nested member value.</param>
+    /// <param name="type">The nested member type.</param>
+    /// <param name="table">The table that owns the child.</param>
+    /// <param name="name">The child member name.</param>
+    /// <param name="fullName">The full child path.</param>
+    /// <param name="member">The reflected member metadata.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private void LoadNestedValue(object? value, Type type, HashTableRx table, string name, string fullName, MemberInfo member)
+    {
+        if (value is null)
         {
             return;
         }
 
-        htrx.Tag![Data] = value;
-        htrx.Tag[FieldInfo] = value.GetType().GetFields();
-        htrx.Tag[PropertyInfo] = value.GetType().GetProperties();
-        try
+        var childTable = GetOrCreateReloadChildTable(table, name);
+        childTable.Tag[name] = member;
+        LoadObject(value, type, childTable, fullName);
+        if (childTable.Count == 0)
         {
-            if (htrx.Tag.Count > 0 && htrx.Tag[PropertyInfo] != null)
-            {
-                foreach (PropertyInfo propertyInfo in (IEnumerable?)htrx.Tag[PropertyInfo]!)
-                {
-                    var name = propertyInfo.Name;
-                    if (propertyInfo.PropertyType?.IsPrimativeArray() == true)
-                    {
-                        ValueChanging(name);
-                        var obj = default(object);
-                        if (propertyInfo.PropertyType.IsTwinCATStringArray())
-                        {
-                            var arrayOfWrappers = propertyInfo?.GetValue(value);
-                            var toStringArrayMethod = value?.GetType()?.GetMethod("ToStringArray", BindingFlags.Public | BindingFlags.Static);
-                            obj = toStringArrayMethod?.Invoke(null, [arrayOfWrappers]) as string[];
-                        }
-                        else
-                        {
-                            obj = propertyInfo.GetValue(value, null);
-                        }
-
-                        htrx[name, true] = obj;
-                        ValueChanged(name, obj);
-                    }
-                    else
-                    {
-                        htrx[true, name]!.Tag![name] = propertyInfo;
-                        var htRx = htrx;
-                        var item = htRx[true, name];
-                        SetPropertyByReflection(propertyInfo, ref item!, propertyInfo.GetValue(value)!, name);
-                        htRx[true, name] = item;
-                    }
-                }
-            }
-        }
-        catch
-        {
+            table.RemoveBaseValue(name);
+            return;
         }
 
-        try
-        {
-            if (htrx.Tag.Count > 0 && htrx.Tag[FieldInfo] != null)
-            {
-                foreach (FieldInfo fieldInfo in (IEnumerable?)htrx.Tag[FieldInfo]!)
-                {
-                    var name = fieldInfo.Name;
-                    if (fieldInfo.FieldType?.IsPrimativeArray() == true)
-                    {
-                        ValueChanging(name);
-                        var obj = default(object);
-                        if (fieldInfo.FieldType.IsTwinCATStringArray())
-                        {
-                            var arrayOfWrappers = fieldInfo?.GetValue(value);
-                            var toStringArrayMethod = value?.GetType()?.GetMethod("ToStringArray", BindingFlags.Public | BindingFlags.Static);
-                            obj = toStringArrayMethod?.Invoke(null, [arrayOfWrappers]) as string[];
-                        }
-                        else
-                        {
-                            obj = fieldInfo.GetValue(value);
-                        }
-
-                        htrx[name, true] = obj;
-                        ValueChanged(name, obj);
-                    }
-                    else
-                    {
-                        htrx[true, name]!.Tag![name] = fieldInfo;
-                        var htRx = htrx;
-                        var item = htRx[true, name];
-                        SetFieldByReflection(fieldInfo, ref item!, fieldInfo.GetValue(value), name);
-                        htRx[true, name] = item;
-                    }
-                }
-            }
-        }
-        catch
-        {
-        }
+        table.SetBaseValue(name, childTable);
     }
 
-    /// <summary>
-    /// Sets the by reflection.
-    /// </summary>
-    /// <param name="fi">The field info.</param>
-    /// <param name="eht">The Reactive Hash Table.</param>
-    /// <param name="value">The value.</param>
-    /// <param name="fullName">The full name.</param>
+    /// <summary>Loads all reflected members from an object into a table.</summary>
+    /// <param name="source">The source object to read.</param>
+    /// <param name="type">The reflected source type.</param>
+    /// <param name="table">The table to populate.</param>
+    /// <param name="parentPath">The optional parent path.</param>
     [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
-    private void SetFieldByReflection(FieldInfo? fi, ref HashTableRx eht, object? value, string fullName)
+    private void LoadObject(object source, Type type, HashTableRx table, string? parentPath)
     {
-        var properties = fi?.FieldType.GetProperties();
-        for (var i = 0; i < checked(properties?.Length); i++)
-        {
-            var propertyInfo = properties[i];
-            var name = propertyInfo.Name;
-            if (propertyInfo.PropertyType.IsPrimativeArray())
-            {
-                var nameOfChange = $"{fullName}.{name}";
-                ValueChanging(nameOfChange);
-                var obj = propertyInfo.GetValue(value, null);
-                eht[propertyInfo.Name, true] = obj;
-                ValueChanged(nameOfChange, obj);
-            }
-            else
-            {
-                eht[true, name]!.Tag![name] = propertyInfo;
-                var eHt = eht;
-                var item = eHt[true, name];
-                SetPropertyByReflection(propertyInfo, ref item!, propertyInfo.GetValue(value)!, fullName + "." + name);
-                eHt[true, name] = item;
-            }
-        }
+        LoadProperties(source, type.GetProperties(), table, parentPath);
+        LoadFields(source, type.GetFields(), table, parentPath);
+    }
 
-        var fields = fi?.FieldType.GetFields();
-        for (var j = 0; j < checked(fields?.Length); j++)
+    /// <summary>Loads all reflected properties into a table.</summary>
+    /// <param name="source">The source object to read.</param>
+    /// <param name="properties">The reflected properties.</param>
+    /// <param name="table">The table to populate.</param>
+    /// <param name="parentPath">The optional parent path.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private void LoadProperties(object source, PropertyInfo[] properties, HashTableRx table, string? parentPath)
+    {
+        for (var index = 0; index < properties.Length; index++)
         {
-            var fieldInfo = fields[j];
-            var name = fieldInfo.Name;
-            if (fieldInfo.FieldType.IsPrimativeArray())
-            {
-                var nameOfChange = $"{fullName}.{name}";
-                ValueChanging(nameOfChange);
-                var obj = fieldInfo.GetValue(value);
-                eht[name, true] = obj;
-                ValueChanged(nameOfChange, obj);
-            }
-            else
-            {
-                eht[true, name]!.Tag![name] = fieldInfo;
-                var eHt = eht;
-                var item = eHt[true, name];
-                SetFieldByReflection(fieldInfo, ref item!, fieldInfo.GetValue(value), fullName + "." + name);
-                eHt[true, name] = item;
-            }
+            LoadProperty(source, properties[index], table, parentPath);
         }
     }
 
-    /// <summary>
-    /// Sets the full name.
-    /// </summary>
-    /// <param name="fullName">The full name.</param>
-    /// <param name="value">The value.</param>
+    /// <summary>Loads one reflected property into a table.</summary>
+    /// <param name="source">The source object to read.</param>
+    /// <param name="property">The reflected property.</param>
+    /// <param name="table">The table to populate.</param>
+    /// <param name="parentPath">The optional parent path.</param>
+    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
+    private void LoadProperty(object source, PropertyInfo property, HashTableRx table, string? parentPath)
+    {
+        if (!CanUseProperty(property))
+        {
+            return;
+        }
+
+        var name = property.Name;
+        var fullName = CombineName(parentPath, name);
+        if (property.PropertyType.IsPrimitiveArray())
+        {
+            if (TryReadPrimitiveValue(source, property.PropertyType, () => property.GetValue(source, null), out var value))
+            {
+                SetLeafValue(table, name, fullName, value);
+            }
+
+            return;
+        }
+
+        LoadNestedValue(TryGetPropertyValue(source, property), property.PropertyType, table, name, fullName, property);
+    }
+
+    /// <summary>Normalizes a dotted path based on the table casing mode.</summary>
+    /// <param name="fullName">The dotted path to normalize.</param>
+    /// <returns>The normalized dotted path.</returns>
+    private string? NormalizePath(string? fullName) =>
+        UseUpperCase ? fullName?.ToUpperInvariant() : fullName;
+
+    /// <summary>Sets the value at the specified dotted path.</summary>
+    /// <param name="fullName">The dotted path to set.</param>
+    /// <param name="value">The value to store.</param>
     private void SetFullName(string? fullName, object? value)
     {
-        if (value == null)
+        if (NormalizePath(fullName) is not { Length: > 0 } normalizedName || value is null)
         {
             return;
         }
 
-        if (UseUpperCase)
+        ValueChanging(normalizedName);
+        SetFullNameValue(normalizedName, value);
+        ValueChanged(normalizedName, value);
+    }
+
+    /// <summary>Sets a normalized dotted-path value in the backing table hierarchy.</summary>
+    /// <param name="fullName">The normalized dotted path.</param>
+    /// <param name="value">The value to store.</param>
+    private void SetFullNameValue(string fullName, object value)
+    {
+        var names = fullName.Split('.');
+        var table = this;
+        for (var index = 0; index < names.Length - 1; index++)
         {
-            fullName = fullName?.ToUpper();
+            var childTable = GetOrCreateChildTable(table, names[index]);
+            table.SetBaseValue(names[index], childTable);
+            table = childTable;
         }
 
+        table.SetBaseValue(names[^1], value);
+    }
+
+    /// <summary>Sets a reflected leaf value and publishes change events from the root table.</summary>
+    /// <param name="table">The table that stores the leaf.</param>
+    /// <param name="name">The leaf member name.</param>
+    /// <param name="fullName">The full leaf path.</param>
+    /// <param name="value">The value to store.</param>
+    private void SetLeafValue(HashTableRx table, string name, string fullName, object? value)
+    {
         ValueChanging(fullName);
-        var names = fullName?.Split('.');
-        var firstName = names![0];
-        if (checked(names.Length) <= 1)
-        {
-            base[firstName] = value;
-        }
-        else
-        {
-            if (base[firstName] is not HashTableRx)
-            {
-                base[firstName] = new HashTableRx(Source!) { UseUpperCase = UseUpperCase };
-            }
-
-            var str = fullName?.Remove(0, checked(fullName.IndexOf('.') + 1));
-            var item = (HashTableRx?)base[firstName];
-            SetFullName(str, ref item!, value);
-            base[firstName] = item;
-        }
-
+        table.SetBaseValue(name, value);
         ValueChanged(fullName, value);
     }
 
-    /// <summary>
-    /// Sets the property by reflection.
-    /// </summary>
-    /// <param name="pi">The property info.</param>
-    /// <param name="htrx">The Reactive Hash Table.</param>
-    /// <param name="value">The value.</param>
-    /// <param name="fullName">The full name.</param>
-    [RequiresUnreferencedCode("Uses reflection over fields and properties which may be trimmed in AOT.")]
-    private void SetPropertyByReflection(PropertyInfo pi, ref HashTableRx htrx, object value, string fullName)
+    /// <summary>Publishes a property changed event and an observable update.</summary>
+    /// <param name="fullName">The changed value path.</param>
+    /// <param name="value">The changed value.</param>
+    private void ValueChanged(string fullName, object? value)
     {
-        var properties = pi.PropertyType.GetProperties();
-        for (var i = 0; i < checked(properties.Length); i++)
-        {
-            var propertyInfo = properties[i];
-            var name = propertyInfo.Name;
-            if (propertyInfo.PropertyType.IsPrimativeArray())
-            {
-                var nameOfChange = $"{fullName}.{name}";
-                ValueChanging(nameOfChange);
-                var obj = propertyInfo.GetValue(value, null);
-                htrx[name, true] = obj;
-                ValueChanged(nameOfChange, obj);
-            }
-            else
-            {
-                htrx[true, name]!.Tag![name] = propertyInfo;
-                var htRx = htrx;
-                var item = htRx[true, name];
-                SetPropertyByReflection(propertyInfo, ref item!, propertyInfo.GetValue(value)!, fullName + "." + name);
-                htRx[true, name] = item;
-            }
-        }
-
-        var fields = pi.PropertyType.GetFields();
-        for (var j = 0; j < checked(fields.Length); j++)
-        {
-            var fieldInfo = fields[j];
-            var name = fieldInfo.Name;
-            if (fieldInfo.FieldType.IsPrimativeArray())
-            {
-                var nameOfChange = $"{fullName}.{name}";
-                ValueChanging(nameOfChange);
-                var obj = fieldInfo.GetValue(value);
-                htrx[name, true] = obj;
-                ValueChanged(nameOfChange, obj);
-            }
-            else
-            {
-                htrx[true, name]!.Tag![name] = fieldInfo;
-                var htRx = htrx;
-                var item = htRx[true, name];
-                SetFieldByReflection(fieldInfo, ref item!, fieldInfo.GetValue(value), fullName + "." + name);
-                htRx[true, name] = item;
-            }
-        }
+        Subject.OnNextHasObservers((fullName, value));
+        PropertyChanged?.Invoke(this, new(fullName));
     }
 
-    /// <summary>
-    /// Values the changed.
-    /// </summary>
-    /// <param name="fullName">The full name.</param>
-    /// <param name="value">The value.</param>
-    private void ValueChanged(string? fullName, object? value)
+    /// <summary>Publishes a property changing event.</summary>
+    /// <param name="fullName">The changing value path.</param>
+    private void ValueChanging(string fullName)
     {
-        if (fullName != null)
-        {
-            Subject.OnNextHasObservers((fullName, value));
-            PropertyChanged?.Invoke(this, new(fullName));
-        }
-    }
-
-    /// <summary>
-    /// Values the changing.
-    /// </summary>
-    /// <param name="fullName">The full name.</param>
-    private void ValueChanging(string? fullName)
-    {
-        if (fullName != null)
-        {
-            PropertyChanging?.Invoke(this, new(fullName));
-        }
+        PropertyChanging?.Invoke(this, new(fullName));
     }
 }

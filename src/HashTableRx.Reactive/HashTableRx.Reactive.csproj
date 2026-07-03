@@ -6,7 +6,10 @@
     <Deterministic>true</Deterministic>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <DebugType>portable</DebugType>
-    <RootNamespace>CP.Collections</RootNamespace>
+    <RootNamespace>CP.Collections.Reactive</RootNamespace>
+    <AssemblyName>HashTableRx.Reactive</AssemblyName>
+    <PackageId>HashTableRx.Reactive</PackageId>
+    <DefineConstants>$(DefineConstants);REACTIVE_SHIM</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">
@@ -19,14 +22,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ReactiveUI.Primitives" Version="6.0.0" />
+    <Compile Include="..\HashTableRx\*.cs" Exclude="..\HashTableRx\bin\**;..\HashTableRx\obj\**" Link="%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="ReactiveUI.Primitives.Concurrency" />
-    <Using Include="ReactiveUI.Primitives.Signals" />
-    <Using Include="ReactiveUI.Primitives.Disposables" />
-    <Using Include="ReactiveUI.Primitives" />
+    <PackageReference Include="ReactiveUI.Primitives.Reactive" Version="6.0.0" />
   </ItemGroup>
-  
+
+  <ItemGroup>
+    <Using Include="ReactiveUI.Primitives.Reactive.Concurrency" />
+    <Using Include="ReactiveUI.Primitives.Disposables" />
+    <Using Include="ReactiveUI.Primitives.Reactive.Signals" />
+    <Using Include="ReactiveUI.Primitives.Reactive" />
+    <Using Include="System.Reactive.Concurrency" />
+    <Using Include="System.Reactive.Concurrency.IScheduler" Alias="ISequencer" />
+  </ItemGroup>
+
 </Project>

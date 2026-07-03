@@ -1,0 +1,23 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/SolutionConfig/">
+    <File Path="../.editorconfig" />
+    <File Path="../.gitignore" />
+    <File Path="../Directory.Build.props" />
+    <File Path="../LICENSE" />
+    <File Path="../README.md" />
+    <File Path="../stylecop.json" />
+    <File Path="../version.json" />
+  </Folder>
+  <Project Path="../build/_build.csproj">
+    <Build Solution="*|Any CPU" Project="false" />
+  </Project>
+  <Project Path="BenchmarkSuite1/BenchmarkSuite1.csproj" />
+  <Project Path="HashTableRx.Reactive/HashTableRx.Reactive.csproj" />
+  <Project Path="HashTableRx.Tests/HashTableRx.Tests.csproj" />
+  <Project Path="HashTableRx/HashTableRx.csproj" />
+</Solution>

@@ -1,6 +1,9 @@
 // Copyright (c) Chris Pulman. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using TUnit.Assertions;
+using TUnit.Core;
+
 namespace CP.Collections.Tests;
 
 /// <summary>
@@ -11,35 +14,35 @@ public class ValueApiTests
     /// <summary>
     /// Setting and getting values works for root and nested paths.
     /// </summary>
-    [Fact]
-    public void ValueSetAndGetWorks()
+    [Test]
+    public async Task ValueSetAndGetWorks()
     {
         var ht = new HashTableRx(false);
         ht["A"] = 5;
-        Assert.Equal(5, ht.Value<int>("A"));
+        await Assert.That(ht.Value<int>("A")).IsEqualTo(5);
 
         ht["A.B"] = 6;
-        Assert.Equal(6, ht.Value<int>("A.B"));
+        await Assert.That(ht.Value<int>("A.B")).IsEqualTo(6);
     }
 
     /// <summary>
     /// Setting a non-existent variable throws InvalidVariableException.
     /// </summary>
-    [Fact]
-    public void ValueThrowsOnInvalidVariable()
+    [Test]
+    public async Task ValueThrowsOnInvalidVariable()
     {
         var ht = new HashTableRx(false);
-        Assert.Throws<InvalidVariableException>(() => ht.Value("NotExisting", 1));
+        await Assert.That(() => ht.Value("NotExisting", 1)).Throws<InvalidVariableException>();
     }
 
     /// <summary>
     /// Setting a value with mismatched type throws InvalidCastException.
     /// </summary>
-    [Fact]
-    public void ValueThrowsOnInvalidCast()
+    [Test]
+    public async Task ValueThrowsOnInvalidCast()
     {
         var ht = new HashTableRx(false);
         ht["A"] = 42;
-        Assert.Throws<InvalidCastException>(() => ht.Value("A", "nope"));
+        await Assert.That(() => ht.Value("A", "nope")).Throws<InvalidCastException>();
     }
 }
