@@ -1,34 +1,37 @@
+using System;
+using CP.BuildTools;
+using HashTableRx.Build;
+using Microsoft.Build.Construction;
 using Nuke.Common;
 using Nuke.Common.Git;
 using Nuke.Common.IO;
 using Nuke.Common.ProjectModel;
 using Nuke.Common.Tooling;
-using Nuke.Common.Tools.NerdbankGitVersioning;
 using Nuke.Common.Tools.DotNet;
+using Nuke.Common.Tools.MSBuild;
 using Serilog;
 using static Nuke.Common.Tools.DotNet.DotNetTasks;
-using Nuke.Common.Tools.PowerShell;
-using CP.BuildTools;
-using Nuke.Common.Utilities;
-using System.Linq;
 
-namespace HashTableRx.Build;
+namespace ReactiveList.Building;
 
 sealed partial class Build : NukeBuild
 {
-    public static int Main() => Execute<Build>(x => x.Test);
+    public static int Main() => Execute<Build>(x => x.Compile);
 
-    [GitRepository] readonly GitRepository Repository;
-    [Solution(GenerateProjects = true)] readonly Solution Solution;
-    [NerdbankGitVersioning] readonly NerdbankGitVersioning NerdbankVersioning;
-    [Parameter][Secret] readonly string NuGetApiKey;
+    private static AbsolutePath SolutionFile => RootDirectory / "src" / "HashTableRx.slnx";
+
+    readonly Solution Solution = SolutionFile.ReadSolution();
     [Parameter("Configuration to build - Default is 'Debug' (local) or 'Release' (server)")]
     readonly Configuration Configuration = IsLocalBuild ? Configuration.Debug : Configuration.Release;
 
-    AbsolutePath PackagesDirectory => RootDirectory / "output";
+    static AbsolutePath PackagesDirectory => RootDirectory / "output";
 
     Target Print => _ => _
-        .Executes(() => Log.Information("NerdbankVersioning = {Value}", NerdbankVersioning.SimpleVersion));
+        .Executes(() =>
+        {
+            Log.Information("Configuration = {Configuration}", Configuration);
+            Log.Information("MinVerVersionOverride = {Value}", Environment.GetEnvironmentVariable("MinVerVersionOverride") ?? "<auto>");
+        });
 
     Target Clean => _ => _
         .Before(Restore)
@@ -44,69 +47,16 @@ sealed partial class Build : NukeBuild
 
     Target Restore => _ => _
         .DependsOn(Clean)
-        .Executes(() => DotNetRestore(s => s.SetProjectFile(Solution)));
+        .Executes(() =>
+        {
+            DotNetWorkloadRestore(s => s.DisableSkipManifestUpdate().SetProject(Solution));
+            return DotNetRestore(s => s.SetProjectFile(Solution));
+        });
 
     Target Compile => _ => _
         .DependsOn(Restore, Print)
         .Executes(() => DotNetBuild(s => s
                 .SetProjectFile(Solution)
-                .SetVersion(NerdbankVersioning.SimpleVersion)
                 .SetConfiguration(Configuration)
-                .EnableNoRestore()));
-
-    Target Pack => _ => _
-    .After(Compile)
-    .Produces(PackagesDirectory / "*.nupkg")
-    .Executes(() =>
-    {
-        if (Repository.IsOnMainOrMasterBranch())
-        {
-            var packableProjects = Solution.GetPackableProjects();
-
-            foreach (var project in packableProjects!)
-            {
-                Log.Information("Packing {Project}", project.Name);
-            }
-
-            DotNetPack(settings => settings
-                .SetConfiguration(Configuration)
-                .SetVersion(NerdbankVersioning.SimpleVersion)
-                .SetOutputDirectory(PackagesDirectory)
-                .CombineWith(packableProjects, (packSettings, project) =>
-                    packSettings.SetProject(project)));
-        }
-    });
-
-    Target Deploy => _ => _
-    .DependsOn(Pack)
-    .Requires(() => NuGetApiKey)
-    .Executes(() =>
-    {
-        if (Repository.IsOnMainOrMasterBranch())
-        {
-            DotNetNuGetPush(settings => settings
-                        .SetSource(this.PublicNuGetSource())
-                        .SetSkipDuplicate(true)
-                        .SetApiKey(NuGetApiKey)
-                        .CombineWith(PackagesDirectory.GlobFiles("*.nupkg"), (s, v) => s.SetTargetPath(v)),
-                    degreeOfParallelism: 5, completeOnFailure: true);
-        }
-    });
-
-    Target Test => _ => _
-        .DependsOn(Compile)
-        .Executes(() =>
-        {
-            var testProjects = Solution.AllProjects.Where(p => p.Name.EndsWith("Tests")).ToList();
-            if (testProjects is null || testProjects.Count == 0)
-            {
-                Log.Warning("No test projects found.");
-                return;
-            }
-            DotNetTest(s => s
-                .SetConfiguration(Configuration)
-                .SetNoBuild(true)
-                .CombineWith(testProjects, (testSettings, project) =>
-                    testSettings.SetProjectFile(project)));
-        });
+                .SetNoRestore(true)));
 }

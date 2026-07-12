@@ -1,7 +1,11 @@
 // Copyright (c) Chris Pulman. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+#if REACTIVE_TESTS
+using ReactiveUI.Primitives.Reactive;
+#else
 using ReactiveUI.Primitives;
+#endif
 using TUnit.Assertions;
 using TUnit.Core;
 
