@@ -10,23 +10,27 @@
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
     <RunAnalyzers>false</RunAnalyzers>
     <UseAppHost>false</UseAppHost>
+    <DefineConstants>$(DefineConstants);REACTIVE_TESTS</DefineConstants>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="ReactiveUI.Primitives.Reactive" />
     <PackageReference Include="TUnit" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\HashTableRx\HashTableRx.csproj" />
+    <ProjectReference Include="..\HashTableRx.Reactive\HashTableRx.Reactive.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="ReactiveShimTests.cs" />
+    <Compile Include="..\HashTableRx.Tests\*.cs" Link="%(Filename)%(Extension)" />
+    <Using Include="CP.Collections.Reactive" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="MockLibraryWithFields.dll">
+    <None Include="..\HashTableRx.Tests\MockLibraryWithFields.dll" Link="MockLibraryWithFields.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

@@ -4,7 +4,11 @@
 using System.Collections;
 using System.ComponentModel;
 using System.Runtime.Serialization;
+#if REACTIVE_TESTS
+using ImmediateSequencer = System.Reactive.Concurrency.ImmediateScheduler;
+#else
 using ReactiveUI.Primitives.Concurrency;
+#endif
 using TUnit.Assertions;
 using TUnit.Core;
 

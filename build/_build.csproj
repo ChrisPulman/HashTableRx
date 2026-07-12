@@ -9,21 +9,12 @@
     <NukeScriptDirectory>..</NukeScriptDirectory>
     <NukeTelemetryVersion>1</NukeTelemetryVersion>
     <IsPackable>False</IsPackable>
-    <Configurations>Debug;Release</Configurations>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CP.Nuke.BuildTools" Version="3.0.2" />
-    <PackageReference Include="Microsoft.Build" Version="18.7.1" />
-    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="18.7.1" />
-    <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.91" />
-    <PackageReference Include="NuGet.Packaging" Version="7.6.0" />
-    <PackageReference Include="Nuke.Common" Version="10.1.0" />
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.9" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageDownload Include="nbgv" Version="[3.10.85]" />
+    <PackageReference Include="CP.Nuke.BuildTools" />
+    <PackageReference Include="Nuke.Common" />
+    <PackageReference Include="System.Security.Cryptography.Xml" />
   </ItemGroup>
 
 </Project>

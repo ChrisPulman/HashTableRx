@@ -8,15 +8,17 @@
     <File Path="../.editorconfig" />
     <File Path="../.gitignore" />
     <File Path="../Directory.Build.props" />
+    <File Path="../Directory.Packages.props" />
+    <File Path="../global.json" />
     <File Path="../LICENSE" />
     <File Path="../README.md" />
     <File Path="../stylecop.json" />
-    <File Path="../version.json" />
   </Folder>
   <Project Path="../build/_build.csproj">
     <Build Solution="*|Any CPU" Project="false" />
   </Project>
   <Project Path="BenchmarkSuite1/BenchmarkSuite1.csproj" />
+  <Project Path="HashTableRx.Reactive.Tests/HashTableRx.Reactive.Tests.csproj" />
   <Project Path="HashTableRx.Reactive/HashTableRx.Reactive.csproj" />
   <Project Path="HashTableRx.Tests/HashTableRx.Tests.csproj" />
   <Project Path="HashTableRx/HashTableRx.csproj" />
