@@ -1,5 +1,5 @@
-// Copyright (c) 2022-2026 Chris Pulman. All rights reserved.
-// Chris Pulman licenses this file to you under the MIT license.
+// Copyright (c) 2019-2026 Chris Pulman and contributors. All rights reserved.
+// Chris Pulman and contributors licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for full license information.
 
 using System.Collections;
@@ -15,8 +15,7 @@ namespace CP.Collections;
 /// <summary>Defines a reactive hash table that can project structured objects into named values.</summary>
 /// <seealso cref="INotifyPropertyChanged"/>
 /// <seealso cref="INotifyPropertyChanging"/>
-[SuppressMessage("Naming", "CA1710:Identifiers should have correct suffix", Justification = "By design.")]
-public interface IHashTableRx : IEnumerable, IDisposable, ICollection, INotifyPropertyChanged, INotifyPropertyChanging
+public interface IHashTableRx : IDisposable, ICollection, INotifyPropertyChanged, INotifyPropertyChanging
 {
     /// <summary>Gets or sets a value indicating whether all named paths are normalized to upper case.</summary>
     bool UseUpperCase { get; set; }

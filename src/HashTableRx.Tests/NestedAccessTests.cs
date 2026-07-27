@@ -30,7 +30,7 @@ public class NestedAccessTests
     {
         var ht = new HashTableRx(false);
         int? seen = null;
-        using var sub = ht.Observe<int>("A.B.C").Subscribe(new TestObserver<int>(v => seen = v));
+        using var sub = ht.Observe("A.B.C", static value => (int)value!).Subscribe(new TestObserver<int>(v => seen = v));
         ht["A.B.C"] = 7;
         await Assert.That(seen).IsEqualTo(7);
     }

@@ -1,5 +1,5 @@
-// Copyright (c) 2022-2026 Chris Pulman. All rights reserved.
-// Chris Pulman licenses this file to you under the MIT license.
+// Copyright (c) 2019-2026 Chris Pulman and contributors. All rights reserved.
+// Chris Pulman and contributors licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for full license information.
 
 using System.ComponentModel;
@@ -42,7 +42,6 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <summary>Initializes a new instance of the <see cref="HashTableRx"/> class.</summary>
     /// <param name="info">The serialization information.</param>
     /// <param name="context">The streaming context.</param>
-    [SuppressMessage("Roslynator", "RCS1231:Make parameter ref read-only", Justification = "Required by serialization constructor shape.")]
     protected HashTableRx(SerializationInfo info, StreamingContext context) =>
         Tag = [];
 

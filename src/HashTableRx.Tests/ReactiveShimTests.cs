@@ -18,7 +18,7 @@ public class ReactiveShimTests
         table.SetStructure(model);
 
         await Assert.That(table.GetType().Namespace).IsEqualTo("CP.Collections.Reactive");
-        await Assert.That(table.Value<int>("Value")).IsEqualTo(7);
+        await Assert.That(table.Value("Value", static value => (int)value!)).IsEqualTo(7);
 
         table.Value("Value", 8);
         var updated = (ReactiveShimRoot)table.Structure!;

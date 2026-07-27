@@ -1,10 +1,9 @@
-// Copyright (c) 2022-2026 Chris Pulman. All rights reserved.
-// Chris Pulman licenses this file to you under the MIT license.
+// Copyright (c) 2019-2026 Chris Pulman and contributors. All rights reserved.
+// Chris Pulman and contributors licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for full license information.
 
 using System.Collections;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 
 #if REACTIVE_SHIM
 namespace CP.Collections.Reactive;
@@ -14,7 +13,7 @@ namespace CP.Collections;
 
 /// <summary>Represents a reactive collection of key/value pairs keyed by their string representation.</summary>
 [Serializable]
-public class HashTable : IObservable<(string key, object? value)>, IDisposable, ICollection, IEnumerable
+public class HashTable : IObservable<(string key, object? value)>, IDisposable, ICollection
 {
     /// <summary>Stores current table values by key.</summary>
     private readonly Dictionary<string, object?> _dictionary = [];
@@ -68,10 +67,7 @@ public class HashTable : IObservable<(string key, object? value)>, IDisposable, 
         {
             _subscription.Create(
                 source.Subscribe(
-                    new Observer<(string key, object? value)>(
-                        value => _ = _scheduler.Schedule(() => AddToBase(value)),
-                        ex => Trace.TraceWarning(ex.ToString()),
-                        () => { })));
+                    new SourceObserver(_scheduler, _dictionary, Subject)));
         }
         catch (Exception ex)
         {
@@ -135,13 +131,22 @@ public class HashTable : IObservable<(string key, object? value)>, IDisposable, 
     /// <summary>Gets an observable for the value associated with the specified key.</summary>
     /// <param name="key">The key.</param>
     /// <returns>An observable sequence containing the key and value.</returns>
-    [UnconditionalSuppressMessage("AOT", "IL2026", Justification = "No reflection used; simple observable wrapper around indexer.")]
+#if REACTIVE_SHIM
     public IObservable<(string key, object value)> Get(object key) =>
-        Signal.Create<(string key, object value)>(observer => _scheduler.Schedule(() =>
+        Signal.Create<(string key, object value)>(observer => _scheduler.Schedule((table: this, observer, key), static (_, state) =>
         {
-            observer.OnNext((key.ToString()!, this[key]!));
-            observer.OnCompleted();
+            state.observer.OnNext((state.key.ToString()!, state.table[state.key]!));
+            state.observer.OnCompleted();
+            return System.Reactive.Disposables.Disposable.Empty;
         }));
+#else
+    public IObservable<(string key, object value)> Get(object key) =>
+        Signal.Create<(string key, object value)>(observer => _scheduler.Schedule((table: this, observer, key), static state =>
+        {
+            state.observer.OnNext((state.key.ToString()!, state.table[state.key]!));
+            state.observer.OnCompleted();
+        }));
+#endif
 
     /// <summary>Removes the element with the specified key from the table.</summary>
     /// <param name="key">The key of the element to remove.</param>
@@ -152,7 +157,15 @@ public class HashTable : IObservable<(string key, object? value)>, IDisposable, 
             return;
         }
 
-        _ = _scheduler.Schedule(() => _dictionary.Remove(key.ToString()!));
+#if REACTIVE_SHIM
+        _ = _scheduler.Schedule(new DictionaryRemoval(_dictionary, key.ToString()!), static (_, state) =>
+        {
+            state.Remove();
+            return System.Reactive.Disposables.Disposable.Empty;
+        });
+#else
+        _ = _scheduler.Schedule((_dictionary, key.ToString()!), static state => _ = state._dictionary.Remove(state.Item2));
+#endif
     }
 
     /// <summary>Subscribes the specified observer.</summary>
@@ -233,23 +246,66 @@ public class HashTable : IObservable<(string key, object? value)>, IDisposable, 
         }
     }
 
-    /// <summary>Adapts callback delegates to an observable observer.</summary>
-    /// <typeparam name="T">The observed value type.</typeparam>
-    /// <param name="onNext">The callback for next values.</param>
-    /// <param name="onError">The callback for errors.</param>
-    /// <param name="onCompleted">The callback for completion.</param>
-    private sealed class Observer<T>(
-        Action<T> onNext,
-        Action<Exception> onError,
-        Action onCompleted) : IObserver<T>
+    /// <summary>Observes source values without retaining the partially constructed table instance.</summary>
+    /// <param name="scheduler">The sequencer used to publish source values.</param>
+    /// <param name="dictionary">The destination value map.</param>
+    /// <param name="subject">The signal that publishes source values.</param>
+    private sealed class SourceObserver(
+        ISequencer scheduler,
+        Dictionary<string, object?> dictionary,
+        ReplaySignal<(string key, object? value)> subject) : IObserver<(string key, object? value)>
     {
         /// <inheritdoc />
-        public void OnCompleted() => onCompleted();
+        public void OnCompleted()
+        {
+        }
 
         /// <inheritdoc />
-        public void OnError(Exception error) => onError(error);
+        public void OnError(Exception error) => Trace.TraceWarning(error.ToString());
 
+#if REACTIVE_SHIM
         /// <inheritdoc />
-        public void OnNext(T value) => onNext(value);
+        public void OnNext((string key, object? value) value) =>
+            _ = scheduler.Schedule((dictionary, subject, value), static (_, state) =>
+            {
+                state.dictionary[state.value.key] = state.value.value;
+                try
+                {
+                    state.subject.OnNext(state.value);
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning(ex.ToString());
+                }
+
+                return System.Reactive.Disposables.Disposable.Empty;
+            });
+#else
+        /// <inheritdoc />
+        public void OnNext((string key, object? value) value) =>
+            _ = scheduler.Schedule((dictionary, subject, value), static state =>
+            {
+                state.dictionary[state.value.key] = state.value.value;
+                try
+                {
+                    state.subject.OnNext(state.value);
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning(ex.ToString());
+                }
+            });
+#endif
     }
+
+#if REACTIVE_SHIM
+    /// <summary>Owns dictionary-removal work scheduled by the reactive package.</summary>
+    /// <param name="dictionary">The dictionary that owns the key.</param>
+    /// <param name="key">The key to remove.</param>
+    private sealed class DictionaryRemoval(Dictionary<string, object?> dictionary, string key)
+    {
+        /// <summary>Removes the key from the dictionary.</summary>
+        public void Remove() => _ = dictionary.Remove(key);
+    }
+#endif
 }

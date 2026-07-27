@@ -13,7 +13,7 @@ Typical use cases include PLC/ADS structures, telemetry objects, dynamically loa
 | `HashTableRx` | `CP.Collections` | `ReactiveUI.Primitives` | You want the lightweight ReactiveUI.Primitives implementation without taking a direct dependency on System.Reactive. |
 | `HashTableRx.Reactive` | `CP.Collections.Reactive` | `ReactiveUI.Primitives.Reactive` | You have existing Rx/System.Reactive code and want the same HashTableRx source API under a separate namespace. |
 
-Both packages share the same source code and public API shape. The only intended difference is the namespace and reactive package base.
+These are the only two distributable library packages in this repository; the benchmark and test projects are not packages. Both packages compile the same production source and expose the same API shape. The intentional differences are the namespace and reactive primitive base, so install **one** package per consuming project unless you specifically need both namespace variants.
 
 ```powershell
 dotnet add package HashTableRx
@@ -33,21 +33,36 @@ The library targets:
 - `net10.0`
 - `net11.0`
 
-The product packages use `ReactiveUI.Primitives` 6.x and analyzers include `StyleSharp.Analyzers` 3.13.4.
+At the time of this source audit, the product packages use `ReactiveUI.Primitives` 7.1.0 or `ReactiveUI.Primitives.Reactive` 7.1.0 respectively. The latter supplies the System.Reactive-compatible observable and scheduler surface used by its build.
+
+## Repository Projects And Verification
+
+| Project | Purpose | Frameworks |
+| --- | --- | --- |
+| `src/HashTableRx` | Builds the `HashTableRx` package in `CP.Collections`. | All product frameworks listed above |
+| `src/HashTableRx.Reactive` | Links the same production source under `CP.Collections.Reactive` and builds the `HashTableRx.Reactive` package. | All product frameworks listed above |
+| `src/HashTableRx.Tests` | TUnit/Microsoft Testing Platform tests for the normal package. | `net9.0` |
+| `src/HashTableRx.Reactive.Tests` | The same TUnit behavior suite compiled against the reactive package. | `net9.0` |
+| `src/BenchmarkSuite1` | BenchmarkDotNet performance harness; not a distributable package. | `net10.0` |
+| `build/_build.csproj` | Nuke build orchestration; not a distributable package. | `net10.0` |
+
+The repository centrally enables Roslynator plus StyleSharp, PerformanceSharp, and SecuritySharp analyzers. A strict validation build treats diagnostics as errors; the two test projects use TUnit assertions and Microsoft Testing Platform.
 
 ## Core Concepts
 
 - Dotted paths address nested values: `Rig.Pump.Speed`, `Casing.Temperature.PV.Value`, `System.Online`.
 - Primitive leaves are stored as values. Primitive leaves are primitive types, `string`, arrays of primitives or strings, and supported TwinCAT string wrapper arrays.
 - Complex members become nested `HashTableRx` nodes.
-- Reads can be typed with `Value<T>(path)` or untyped through the string indexer.
+- Reads use `Value(path, converter)` or the untyped string indexer; the converter makes the result type explicit and inferable.
 - New paths are created with the string indexer: `table["A.B.C"] = 1`.
 - Existing paths are updated with `Value(path, value)`. This intentionally throws when the path does not exist.
-- `Observe<T>(path)` observes one variable and suppresses duplicate consecutive values.
-- `ObserveAll` observes every value change as `(string key, object? value)`.
+- `Observe(path, converter)` observes one variable and suppresses duplicate consecutive values.
+- `ObserveAll` exposes distinct `(string key, object? value)` updates; consecutive equal tuples are suppressed.
 - `SetStructure(object)` rebuilds the table from an object by reflection.
 - `Structure` applies current table values back onto the original object instance and returns it.
 - `UseUpperCase` normalizes keys and paths to uppercase for case-insensitive PLC-style naming.
+
+The source-observable constructor (`new HashTableRx(source)`) leaves `UseUpperCase` at its default `false`; set the property before using paths if normalization is required.
 
 ## Minimal Example
 
@@ -77,15 +92,16 @@ using var table = new HashTableRx(useUpperCase: false);
 table["System.Online"] = true;
 table["Process.Temperature.CV"] = 20.0f;
 
-bool online = table.Value<bool>("System.Online");
-float current = table.Value<float>("Process.Temperature.CV");
+bool online = table.Value("System.Online", static value => (bool)value!);
+float current = table.Value("Process.Temperature.CV", static value => (float)value!);
 
 using var temperatureSubscription = table
-    .Observe<float>("Process.Temperature.CV")
+    .Observe("Process.Temperature.CV", static value => (float)value!)
     .Subscribe(new ActionObserver<float>(value =>
         Console.WriteLine($"Temperature changed to {value}")));
 
-// Value writes are for existing variables. This emits to Observe<T> and ObserveAll.
+// Value writes are for existing variables. A distinct change emits to Observe
+// and ObserveAll.
 table.Value("Process.Temperature.CV", 25.0f);
 
 // New paths still use the indexer.
@@ -130,7 +146,7 @@ var table = new HashTableRx(false);
 table["Rig.Speed"] = 0;
 
 using var subscription = table
-    .Observe<int>("Rig.Speed")
+    .Observe("Rig.Speed", static value => (int)value!)
     .Subscribe(value => Console.WriteLine($"Speed: {value}"));
 
 table.Value("Rig.Speed", 1450);
@@ -148,8 +164,8 @@ var table = new HashTableRx(false);
 table["Plant.Unit1.Pump.Speed"] = 1200;
 table["Plant.Unit1.Pump.Running"] = true;
 
-int speed = table.Value<int>("Plant.Unit1.Pump.Speed");
-bool running = table.Value<bool>("Plant.Unit1.Pump.Running");
+int speed = table.Value("Plant.Unit1.Pump.Speed", static value => (int)value!);
+bool running = table.Value("Plant.Unit1.Pump.Running", static value => (bool)value!);
 
 object? rawSpeed = table["Plant.Unit1.Pump.Speed"];
 object? missing = table["Plant.Unit1.Pump.Missing"];
@@ -159,7 +175,7 @@ Behavior to know:
 
 - Reading a missing path through the indexer returns `null`.
 - Setting a `null` value through the indexer is ignored.
-- Setting `A.B.C` can replace a previous scalar stored at `A` with a nested branch.
+- Setting `A.B.C` can replace a previous scalar stored at `A` with a nested branch; setting `A` later can likewise replace its nested branch with a scalar.
 - Root and nested keys are stored in separate nested tables. `Keys` returns the current table level keys, not a flattened list of every dotted path.
 
 ## Case Handling
@@ -172,27 +188,27 @@ using CP.Collections;
 var caseSensitive = new HashTableRx(useUpperCase: false);
 caseSensitive["Root.Child.Value"] = 42;
 
-int exact = caseSensitive.Value<int>("Root.Child.Value");
-int missing = caseSensitive.Value<int>("ROOT.CHILD.VALUE"); // default(int), 0
+int exact = caseSensitive.Value("Root.Child.Value", static value => (int)value!);
+int missing = caseSensitive.Value("ROOT.CHILD.VALUE", static value => (int)value!); // default(int), 0
 
 var normalized = new HashTableRx(useUpperCase: true);
 normalized["Root.Child.Value"] = 42;
 
-int upper = normalized.Value<int>("ROOT.CHILD.VALUE");
-int lower = normalized.Value<int>("root.child.value");
+int upper = normalized.Value("ROOT.CHILD.VALUE", static value => (int)value!);
+int lower = normalized.Value("root.child.value", static value => (int)value!);
 
 using var subscription = normalized
-    .Observe<int>("root.child.value")
+    .Observe("root.child.value", static value => (int)value!)
     .Subscribe(new ActionObserver<int>(value => Console.WriteLine(value)));
 
 normalized.Value("ROOT.CHILD.VALUE", 99);
 ```
 
-When `UseUpperCase` is `true`, indexer access, `Value<T>`, `Value(path, value)`, and `Observe<T>` all normalize paths.
+When `UseUpperCase` is `true`, indexer access, `Value(path, converter)`, `Value(path, value)`, and `Observe(path, converter)` all normalize paths.
 
 ## Typed Reads And Writes
 
-`Value<T>(path)` reads and casts a stored value:
+`Value(path, converter)` reads a stored value through a required converter. The lambda return type infers the result type:
 
 ```csharp
 using CP.Collections;
@@ -201,12 +217,14 @@ var table = new HashTableRx(false);
 table["A"] = 5;
 table["B"] = "text";
 
-int a = table.Value<int>("A");
-string? b = table.Value<string>("B");
-int missing = table.Value<int>("Missing");       // default(int)
-int wrongType = table.Value<int>("B");           // default(int)
-int? nullableMissing = table.Value<int?>("Missing");
+int a = table.Value("A", static value => (int)value!);
+string? b = table.Value("B", static value => (string?)value);
+int missing = table.Value("Missing", static value => (int)value!);       // default(int)
+int wrongType = table.Value("B", static value => (int)value!);           // default(int)
+int? nullableMissing = table.Value("Missing", static value => (int?)value);
 ```
+
+The converter is validated before the table receiver or path. A null converter therefore throws `ArgumentNullException`, even if the receiver or path is null. Because the read and write overloads both use the name `Value`, a deliberate null argument must be explicitly cast to either `Func<object?, T?>` or the intended value type; an untyped `null` literal is ambiguous.
 
 `Value(path, value)` updates an existing variable:
 
@@ -262,7 +280,7 @@ var table = new HashTableRx(false);
 var received = new List<int>();
 
 using var subscription = table
-    .Observe<int>("A.B.C")
+    .Observe("A.B.C", static value => (int)value!)
     .Subscribe(new ActionObserver<int>(received.Add));
 
 table["A.B.C"] = 1;      // emits 1
@@ -285,7 +303,7 @@ table["X.Y"] = 3.14f;
 table["Z"] = true;
 ```
 
-`ObserveAll` publishes the dotted path passed to the root table for value changes. `Observe<T>` filters that stream by path and casts the value to `T`.
+`ObserveAll` publishes the dotted path passed to the root table and applies `DistinctUntilChanged()` to the complete `(key, value)` tuple. Consecutive equal tuples are therefore suppressed. `Observe(path, converter)` filters that stream by normalized path, converts each value, and applies a second distinct filter to the converted values. Unlike `Value(path, converter)`, a converter exception faults the typed observable.
 
 ## Property Change Events
 
@@ -346,8 +364,8 @@ var rig = new RigSTRUCT
 var table = new HashTableRx(useUpperCase: false);
 table.SetStructure(rig);
 
-bool valid = table.Value<bool>("CalibrationDataValid");
-float pv = table.Value<float>("Casing.Temperature.PV.Value");
+bool valid = table.Value("CalibrationDataValid", static value => (bool)value!);
+float pv = table.Value("Casing.Temperature.PV.Value", static value => (float)value!);
 
 table.Value("Casing.Temperature.PV.Value", 20.0f);
 
@@ -366,8 +384,13 @@ Reflection behavior:
 - Null nested objects are skipped and left unchanged on write-back.
 - `SetStructure(null)` is a no-op.
 - Calling `SetStructure` clears the current table values before loading the new object.
+- Every reflected leaf loaded by `SetStructure` raises the root property-change events and is eligible for `ObserveAll`; subscribe before loading when initial values matter.
 
 `Structure` returns the same object instance that was passed to `SetStructure`, after applying current table values back into it.
+
+A read-only primitive property is loaded but cannot be replaced during `Structure`. A read-only *nested reference* can still have its child values applied because the referenced object itself is mutable; the property setter is not required for that traversal.
+
+The string indexer intentionally bypasses `Value(path, value)`'s runtime-type guard. If a direct indexer write changes a reflected leaf to an incompatible type, `Structure` catches expected reflection assignment failures and leaves that source member unchanged. Prefer `Value(path, value)` for guarded writes to reflected structures.
 
 ## Dynamic Structure Reloads
 
@@ -422,7 +445,7 @@ object rig = assembly.CreateInstance("TwinCATRx.RigSTRUCT")
 var table = new HashTableRx(false);
 table.SetStructure(rig);
 
-float pv = table.Value<float>("Casing.Temperature.PV.Value");
+float pv = table.Value("Casing.Temperature.PV.Value", static value => (float)value!);
 
 table.Value("Casing.Temperature.PV.Value", pv + 1.0f);
 
@@ -441,7 +464,9 @@ The type helper `IsPrimitiveArray()` controls which members are treated as leave
 - `string[]`.
 - TwinCAT string wrapper arrays whose type name contains `STRING_` and `_WRAPPER`.
 
-TwinCAT string wrapper arrays are converted to `string[]` when the source type exposes a public static `ToStringArray` method.
+This is an exact type test based on `Type.IsPrimitive`, plus the explicitly listed string and array cases. `decimal`, `DateTime`, enums, nullable value types, and arbitrary structs are not treated as primitive leaves. They are traversed as complex members and may contribute no paths when they expose no usable public members.
+
+TwinCAT string wrapper arrays are converted to `string[]` when the object being reflected exposes a public static `ToStringArray` method. If that converter is absent or cannot be used, the loaded table value is `null`. This conversion is a read-side convenience: assigning the resulting `string[]` back through `Structure` is not a supported wrapper reconstruction mechanism, and an incompatible reflection write is ignored.
 
 ```csharp
 using CP.Collections;
@@ -471,7 +496,7 @@ var source = new TwinCatStringRoot
 var table = new HashTableRx(false);
 table.SetStructure(source);
 
-string[]? names = table.Value<string[]>("Names");
+string[]? names = table.Value("Names", static value => (string[]?)value);
 ```
 
 The compatibility alias `IsPrimativeArray()` is retained for existing callers. Prefer `IsPrimitiveArray()` in new code.
@@ -510,10 +535,38 @@ Notes:
 
 - `Add(key, value)` adds or replaces a value and notifies observers.
 - The object indexer adds or replaces a value without publishing through `Subject`.
-- `Remove(key)` and `Clear()` are scheduled through the configured sequencer.
-- `Get(key)` returns a one-shot observable that emits the current value and completes.
+- `Remove(key)` and `Clear()` are scheduled through the configured sequencer and do not publish removal notifications.
+- `Get(key)` returns a one-shot observable that emits the current value and completes. Although its tuple value is annotated as `object`, a missing key emits `null` at runtime.
 - `Subscribe(observer)` subscribes to table changes.
 - `Dispose()` releases the source subscription and internal signal.
+
+### Observable source behavior
+
+The source constructors schedule incoming tuples and publish them to subscribers. A source error or an exception thrown while subscribing is caught and written with `Trace.TraceWarning`; source completion requires no extra table action.
+
+For `HashTableRx(IObservable<...>)`, incoming keys are stored exactly as flat base-table keys. They do not pass through dotted-path expansion or `UseUpperCase`, and they do not raise `PropertyChanging` or `PropertyChanged`. `ObserveAll` still receives the source tuple. Prefer simple source keys, or consume dotted source keys through the base `HashTable` API:
+
+```csharp
+using CP.Collections;
+using ReactiveUI.Primitives.Signals;
+
+var source = new ReplaySignal<(string key, object? value)>(1);
+using var table = new HashTableRx(source);
+
+using var changes = table.ObserveAll.Subscribe(
+    new ActionObserver<(string key, object? value)>(change =>
+        Console.WriteLine($"{change.key} = {change.value}")));
+
+source.OnNext(("Speed", 1450));
+int speed = table.Value("Speed", static value => (int)value!);
+
+source.OnNext(("Live.Speed", 1500));
+
+// The source stored this exact flat key. The dotted HashTableRx string indexer
+// searches a nested Live -> Speed path, so use the base table for this case.
+object? flatSpeed = ((HashTable)table)["Live.Speed"];
+object? nestedSpeed = table["Live.Speed"]; // null
+```
 
 ## Full API Reference
 
@@ -557,10 +610,10 @@ Methods:
 | Member | Description |
 | --- | --- |
 | `void Add(object key, object? value)` | Adds or replaces a value and publishes an update. Null keys are ignored. |
-| `void Clear()` | Schedules removal of all values. |
+| `void Clear()` | Schedules removal of all values without publishing removal notifications. |
 | `void Dispose()` | Releases the source subscription and internal signal. |
 | `IObservable<(string key, object value)> Get(object key)` | Returns a scheduled one-shot observable for the current key value. |
-| `void Remove(object key)` | Schedules removal of one key. Null keys are ignored. |
+| `void Remove(object key)` | Schedules removal of one key without publishing a removal notification. Null keys are ignored. |
 | `IDisposable Subscribe(IObserver<(string key, object? value)> observer)` | Subscribes to table updates. |
 | `void CopyTo(Array array, int index)` | Implements `ICollection.CopyTo`. |
 | `IEnumerator GetEnumerator()` | Enumerates stored `KeyValuePair<string, object?>` values. |
@@ -575,7 +628,7 @@ Constructors:
 | Member | Description |
 | --- | --- |
 | `HashTableRx(bool useUpperCase)` | Creates an empty dotted-path table and sets path normalization mode. |
-| `HashTableRx(IObservable<(string key, object? value)> source)` | Creates a table that receives updates from an observable source. |
+| `HashTableRx(IObservable<(string key, object? value)> source)` | Creates a table that receives updates from an observable source; `UseUpperCase` initially remains `false`. |
 | `HashTableRx(SerializationInfo info, StreamingContext context)` | Protected serialization constructor. |
 
 Events:
@@ -593,7 +646,7 @@ Properties:
 | `Tag` | `HashTable` | Metadata table associated with this instance. When using reflection, avoid overwriting `Data`, `FieldInfo`, or `PropertyInfo` keys. |
 | `UseUpperCase` | `bool` | Normalizes dotted paths to uppercase when `true`. |
 | `Structure` | `object?` | Applies current table values back to the object loaded by `SetStructure` and returns it. Returns `null` when no structure has been loaded. |
-| `this[string fullName]` | `object?` | Gets or sets a value by dotted path. Setting creates intermediate nodes. |
+| `this[string fullName]` | `object?` | Gets or sets a value by dotted path. A non-null set creates intermediate nodes; a null/empty path or null value is ignored. |
 
 Methods:
 
@@ -601,8 +654,8 @@ Methods:
 | --- | --- |
 | `void Add(object key, object? value)` | Adds or replaces a value at this table level. |
 | `void Add(object key, HashTableRx value)` | Adds or replaces a nested table at this table level. |
-| `bool ContainsKey(object key, bool searchAll)` | Checks the current table level or, when `searchAll` is `true`, recursively checks nested tables. |
-| `void SetStructure(object? value)` | Clears current values and loads public fields/properties from a structured object. Null input is ignored. |
+| `bool ContainsKey(object key, bool searchAll)` | Checks the current table level or recursively finds that key segment at any nested level when `searchAll` is `true`; this is not a dotted-path lookup. |
+| `void SetStructure(object? value)` | Clears current values and loads public fields/properties from a structured object, publishing each reflected leaf. Null input is ignored. |
 
 ### `IHashTableRx`
 
@@ -634,9 +687,9 @@ It exposes:
 
 | Member | Applies to | Description |
 | --- | --- | --- |
-| `IObservable<T?> Observe<T>(string variable)` | `IHashTableRx?` | Observes one dotted path and suppresses consecutive duplicate values. Throws `ArgumentNullException` when the table is null. |
-| `T? Value<T>(string? variable)` | `IHashTableRx?` | Reads a dotted path. Returns `default` when the table, path, value, or cast is not available. |
-| `bool Value<T>(string? variable, T? value)` | `IHashTableRx?` | Writes an existing dotted path. Returns `false` for a null table. Throws `InvalidVariableException` for null/missing paths and `InvalidCastException` for type mismatch. |
+| `IObservable<T?> Observe<T>(string variable, Func<object?, T?> converter)` | `IHashTableRx` | Observes one dotted path, converts each raw value, and suppresses consecutive duplicate values. Throws `ArgumentNullException` when the runtime receiver or converter is null. |
+| `T? Value<T>(string? variable, Func<object?, T?> converter)` | `IHashTableRx` | Reads a dotted path through its required converter. Returns `default` when the runtime receiver, path, or value is not available; an `InvalidCastException` from the converter also returns `default`. A null converter throws before those checks. |
+| `bool Value<T>(string? variable, T? value)` | `IHashTableRx` | Writes an existing dotted path. Returns `false` for a null runtime receiver. Throws `InvalidVariableException` for null/missing paths and `InvalidCastException` for type mismatch. |
 | `bool IsPrimitiveArray()` | `Type?` | Returns `true` when the type is treated as a leaf value. |
 | `bool IsPrimativeArray()` | `Type?` | Compatibility alias for the historical misspelling. |
 | `bool IsTwinCATStringArray()` | `Type?` | Returns `true` for TwinCAT string wrapper array type names. |
@@ -712,7 +765,7 @@ public sealed class LiveRigAdapter(Action<object> writeRig)
         _table.SetStructure(rigStructure);
     }
 
-    public T? Read<T>(string path) => _table.Value<T>(path);
+    public T? Read<T>(string path) => _table.Value(path, static value => (T?)value);
 
     public void Write<T>(string path, T value)
     {
@@ -735,7 +788,7 @@ If you publish with trimming or Native AOT, preserve the members of reflected st
 - Keep one table instance per live structure where possible.
 - Load or reload shape with `SetStructure`.
 - Use `Value(path, value)` for high-frequency updates to known values.
-- Use `Observe<T>` for path-specific processing and `ObserveAll` for routing or diagnostics.
+- Use `Observe(path, converter)` for path-specific processing and `ObserveAll` for routing or diagnostics.
 - Avoid overwriting `Tag` metadata keys used by reflection support.
 - For dynamic external structures, treat `SetStructure` as the shape refresh point.
 

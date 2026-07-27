@@ -1,8 +1,6 @@
-// Copyright (c) 2022-2026 Chris Pulman. All rights reserved.
-// Chris Pulman licenses this file to you under the MIT license.
+// Copyright (c) 2019-2026 Chris Pulman and contributors. All rights reserved.
+// Chris Pulman and contributors licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for full license information.
-
-using System.Diagnostics.CodeAnalysis;
 
 #if REACTIVE_SHIM
 namespace CP.Collections.Reactive;
@@ -15,33 +13,54 @@ public static class HashTableRxExtensions
 {
     /// <summary>Provides observable and value helpers for reactive hash tables.</summary>
     /// <param name="table">The reactive hash table.</param>
-    extension(IHashTableRx? table)
+    extension(IHashTableRx table)
     {
         /// <summary>Observes updates for a single dotted variable path.</summary>
         /// <typeparam name="T">The observed value type.</typeparam>
         /// <param name="variable">The dotted variable path.</param>
+        /// <param name="converter">Converts each matching raw value to the observed type.</param>
         /// <returns>An observable sequence of matching values.</returns>
-        public IObservable<T?> Observe<T>(string variable)
+        public IObservable<T?> Observe<T>(string variable, Func<object?, T?> converter)
         {
+#if NET6_0_OR_GREATER
+            ArgumentNullException.ThrowIfNull(table);
+            ArgumentNullException.ThrowIfNull(converter);
+#else
             if (table is null)
             {
                 throw new ArgumentNullException(nameof(table));
             }
 
+            if (converter is null)
+            {
+                throw new ArgumentNullException(nameof(converter));
+            }
+#endif
+
             var observedVariable = table.UseUpperCase ? variable.ToUpperInvariant() : variable;
             return table
                 .ObserveAll
                 .Where(change => (table.UseUpperCase ? change.key.ToUpperInvariant() : change.key) == observedVariable)
-                .Select(change => (T?)change.value)
+                .Select(change => converter(change.value))
                 .DistinctUntilChanged();
         }
 
         /// <summary>Gets the value of a dotted variable path.</summary>
         /// <typeparam name="T">The expected value type.</typeparam>
         /// <param name="variable">The dotted variable path.</param>
+        /// <param name="converter">Converts the raw value to the expected type.</param>
         /// <returns>The current value, or the default value when the path is missing or incompatible.</returns>
-        public T? Value<T>(string? variable)
+        public T? Value<T>(string? variable, Func<object?, T?> converter)
         {
+#if NET6_0_OR_GREATER
+            ArgumentNullException.ThrowIfNull(converter);
+#else
+            if (converter is null)
+            {
+                throw new ArgumentNullException(nameof(converter));
+            }
+#endif
+
             if (table is null || variable is null)
             {
                 return default;
@@ -56,7 +75,7 @@ public static class HashTableRxExtensions
 
             try
             {
-                return raw is T value ? value : (T?)raw;
+                return converter(raw);
             }
             catch (InvalidCastException)
             {
@@ -113,7 +132,6 @@ public static class HashTableRxExtensions
     {
         /// <summary>Determines whether the type can be treated as a primitive leaf value.</summary>
         /// <returns><c>true</c> when the type is a primitive leaf value; otherwise, <c>false</c>.</returns>
-        [UnconditionalSuppressMessage("AOT", "IL2026", Justification = "Only type metadata checks; no reflection on members.")]
         public bool IsPrimitiveArray()
         {
             if (type is null)
@@ -137,7 +155,6 @@ public static class HashTableRxExtensions
 
         /// <summary>Determines whether the type can be treated as a primitive leaf value.</summary>
         /// <returns><c>true</c> when the type is a primitive leaf value; otherwise, <c>false</c>.</returns>
-        [UnconditionalSuppressMessage("AOT", "IL2026", Justification = "Compatibility alias for IsPrimitiveArray.")]
         public bool IsPrimativeArray() => type.IsPrimitiveArray();
 
         /// <summary>Determines whether the type is a TwinCAT string wrapper array.</summary>

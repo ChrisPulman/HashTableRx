@@ -20,8 +20,8 @@ public class CaseSensitivityTests
         var ht = new HashTableRx(false);
         ht["Root.Child.Value"] = 42;
 
-        await Assert.That(ht.Value<int>("Root.Child.Value")).IsEqualTo(42);
-        await Assert.That(ht.Value<int?>("ROOT.CHILD.VALUE")).IsNull();
+        await Assert.That(ht.Value("Root.Child.Value", static value => (int)value!)).IsEqualTo(42);
+        await Assert.That(ht.Value("ROOT.CHILD.VALUE", static value => (int?)value)).IsNull();
     }
 
     /// <summary>
@@ -34,12 +34,12 @@ public class CaseSensitivityTests
         ht["Root.Child.Value"] = 42;
 
         // Upper / lower should both resolve when UseUpperCase = true
-        await Assert.That(ht.Value<int>("ROOT.CHILD.VALUE")).IsEqualTo(42);
-        await Assert.That(ht.Value<int>("root.child.value")).IsEqualTo(42);
+        await Assert.That(ht.Value("ROOT.CHILD.VALUE", static value => (int)value!)).IsEqualTo(42);
+        await Assert.That(ht.Value("root.child.value", static value => (int)value!)).IsEqualTo(42);
 
         // Observe should also normalize and emit
         int? observed = null;
-        using var sub = ht.Observe<int>("root.child.value").Subscribe(new TestObserver<int>(v => observed = v));
+        using var sub = ht.Observe("root.child.value", static value => (int)value!).Subscribe(new TestObserver<int>(v => observed = v));
         ht.Value("ROOT.CHILD.VALUE", 99);
         await Assert.That(observed).IsEqualTo(99);
     }

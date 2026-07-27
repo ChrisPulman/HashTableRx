@@ -3,7 +3,6 @@
 
 using System.Collections;
 using System.ComponentModel;
-using System.Runtime.Serialization;
 #if REACTIVE_TESTS
 using ImmediateSequencer = System.Reactive.Concurrency.ImmediateScheduler;
 #else
@@ -63,6 +62,21 @@ public class CoverageBehaviorTests
     }
 
     [Test]
+    public async Task SourceObservableRetainsUpdatesWhenSubscriberThrows()
+    {
+        var source = new ManualObservable<(string key, object? value)>();
+        using var table = new HashTable(ImmediateSequencer.Instance, source);
+        using var subscription = table.Subscribe(
+            new TestObserver<(string key, object? value)>(
+                static _ => throw new InvalidOperationException("Subscriber failed.")));
+
+        source.Push(("Live.Value", 12));
+
+        await Assert.That(table.ContainsKey("Live.Value")).IsTrue();
+        await Assert.That((int?)table["Live.Value"]).IsEqualTo(12);
+    }
+
+    [Test]
     public async Task SourceObservableFaultsCompletionAndSubscribeFailureAreHandled()
     {
         var source = new ManualObservable<(string key, object? value)>();
@@ -111,7 +125,7 @@ public class CoverageBehaviorTests
         source.Push(("A", 42));
         SpinWait.SpinUntil(() => table.ContainsKey("A"), TimeSpan.FromSeconds(1));
 
-        await Assert.That(table.Value<int>("A")).IsEqualTo(42);
+        await Assert.That(table.Value("A", static value => (int)value!)).IsEqualTo(42);
     }
 
     [Test]
@@ -126,7 +140,7 @@ public class CoverageBehaviorTests
         await Assert.That(table.ContainsKey("Value", searchAll: false)).IsFalse();
         await Assert.That(table.ContainsKey("Value", searchAll: true)).IsTrue();
         await Assert.That(table.ContainsKey("Missing", searchAll: true)).IsFalse();
-        await Assert.That(table.Value<int>("Direct")).IsEqualTo(6);
+        await Assert.That(table.Value("Direct", static value => (int)value!)).IsEqualTo(6);
     }
 
     [Test]
@@ -139,7 +153,7 @@ public class CoverageBehaviorTests
         await Assert.That(new HashTableRx(false).Structure).IsNull();
 
         table["A"] = null;
-        await Assert.That(table.Value<int>("A")).IsEqualTo(1);
+        await Assert.That(table.Value("A", static value => (int)value!)).IsEqualTo(1);
     }
 
     [Test]
@@ -186,14 +200,14 @@ public class CoverageBehaviorTests
         var table = new HashTableRx(false);
         table.SetStructure(model);
 
-        await Assert.That(table.Value<int>("PropertyValue")).IsEqualTo(7);
-        await Assert.That(table.Value<string>("Text")).IsEqualTo("initial");
-        await Assert.That(table.Value<bool>("ChildProperty.Flag")).IsTrue();
-        await Assert.That(table.Value<int>("ChildProperty.GrandChildProperty.Code")).IsEqualTo(12);
-        await Assert.That(table.Value<int>("ChildProperty.GrandChildField.Code")).IsEqualTo(13);
-        await Assert.That(table.Value<float>("ChildField.AmountField")).IsEqualTo(4.5f);
-        await Assert.That(table.Value<int>("ChildField.GrandChildProperty.Code")).IsEqualTo(14);
-        await Assert.That(table.Value<int>("ChildField.GrandChildField.Code")).IsEqualTo(15);
+        await Assert.That(table.Value("PropertyValue", static value => (int)value!)).IsEqualTo(7);
+        await Assert.That(table.Value("Text", static value => (string?)value)).IsEqualTo("initial");
+        await Assert.That(table.Value("ChildProperty.Flag", static value => (bool)value!)).IsTrue();
+        await Assert.That(table.Value("ChildProperty.GrandChildProperty.Code", static value => (int)value!)).IsEqualTo(12);
+        await Assert.That(table.Value("ChildProperty.GrandChildField.Code", static value => (int)value!)).IsEqualTo(13);
+        await Assert.That(table.Value("ChildField.AmountField", static value => (float)value!)).IsEqualTo(4.5f);
+        await Assert.That(table.Value("ChildField.GrandChildProperty.Code", static value => (int)value!)).IsEqualTo(14);
+        await Assert.That(table.Value("ChildField.GrandChildField.Code", static value => (int)value!)).IsEqualTo(15);
 
         table.Value("PropertyValue", 8);
         table.Value("Text", "updated");
@@ -220,13 +234,13 @@ public class CoverageBehaviorTests
     public async Task MixinNullAndTypeFallbackPathsReturnDefaults()
     {
         IHashTableRx? table = null;
-        await Assert.That(table!.Value<int>("A")).IsEqualTo(0);
+        await Assert.That(table!.Value("A", static value => (int)value!)).IsEqualTo(0);
         await Assert.That(table!.Value("A", 1)).IsFalse();
-        await Assert.That(() => table!.Observe<int>("A")).Throws<ArgumentNullException>();
+        await Assert.That(() => table!.Observe("A", static value => (int)value!)).Throws<ArgumentNullException>();
 
         var concrete = new HashTableRx(false);
         concrete["A"] = "text";
-        await Assert.That(concrete.Value<int>("A")).IsEqualTo(0);
+        await Assert.That(concrete.Value("A", static value => (int)value!)).IsEqualTo(0);
 
         var throwing = new ThrowingHashTableRx();
         await Assert.That(() => throwing.Value("A", 1)).Throws<InvalidVariableException>();
@@ -278,8 +292,8 @@ public class CoverageBehaviorTests
         var table = new HashTableRx(false);
         table.SetStructure(model);
 
-        await Assert.That(table.Value<string[]>("PropertyStrings")).IsEquivalentTo(["P1", "P2"]);
-        await Assert.That(table.Value<string[]>("FieldStrings")).IsEquivalentTo(["F1"]);
+        await Assert.That(table.Value("PropertyStrings", static value => (string[]?)value)).IsEquivalentTo(["P1", "P2"]);
+        await Assert.That(table.Value("FieldStrings", static value => (string[]?)value)).IsEquivalentTo(["F1"]);
     }
 
     [Test]
@@ -429,9 +443,9 @@ public class CoverageBehaviorTests
         await Assert.That(readOnlyResult.Child.Code).IsEqualTo(42);
         await Assert.That(((ReadOnlyPrimitiveRoot)readOnlyPrimitiveTable.Structure!).Number).IsEqualTo(1);
         await Assert.That(writeOnlyTable.Count).IsEqualTo(0);
-        await Assert.That(noConverterTable.Value<string[]>("PropertyStrings")).IsNull();
+        await Assert.That(noConverterTable.Value("PropertyStrings", static value => (string[]?)value)).IsNull();
         await Assert.That(uppercase.Count).IsEqualTo(1);
-        await Assert.That(() => untypedNullSet.Value<object>("A", null)).Throws<InvalidCastException>();
+        await Assert.That(() => untypedNullSet.Value("A", (object?)null)).Throws<InvalidCastException>();
     }
 
     [Test]
@@ -566,12 +580,10 @@ public class CoverageBehaviorTests
 
     private sealed class SerializationConstructorHashTableRx : HashTableRx
     {
-#pragma warning disable SYSLIB0050
         public SerializationConstructorHashTableRx()
-            : base(new SerializationInfo(typeof(HashTableRx), new FormatterConverter()), new StreamingContext())
+            : base(null!, default)
         {
         }
-#pragma warning restore SYSLIB0050
     }
 
     private sealed class ThrowingHashTableRx : IHashTableRx
