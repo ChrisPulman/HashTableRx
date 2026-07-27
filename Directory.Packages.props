@@ -17,7 +17,9 @@
     <PackageVersion Include="ReactiveUI.Primitives" Version="7.1.0" />
     <PackageVersion Include="ReactiveUI.Primitives.Reactive" Version="7.1.0" />
     <PackageVersion Include="Roslynator.Analyzers" Version="4.15.0" />
-    <PackageVersion Include="StyleSharp.Analyzers" Version="3.39.2" />
+    <PackageVersion Include="StyleSharp.Analyzers" Version="3.40.0" />
+    <PackageVersion Include="PerformanceSharp.Analyzers" Version="3.40.0" />
+    <PackageVersion Include="SecuritySharp.Analyzers" Version="3.40.0" />
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.10" />
     <PackageVersion Include="TUnit" Version="1.61.38" />
   </ItemGroup>
