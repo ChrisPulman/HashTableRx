@@ -25,7 +25,7 @@ public class ObserveBehaviorTests
         var ht = new HashTableRx(false);
         var results = new List<int?>();
 
-        using var sub = ht.Observe<int>("A.B.C").Select(x => (int?)x).Subscribe(new TestObserver<int?>(results.Add));
+        using var sub = ht.Observe("A.B.C", static value => (int)value!).Select(x => (int?)x).Subscribe(new TestObserver<int?>(results.Add));
 
         // Create the variable first via indexer
         ht["A.B.C"] = 1;

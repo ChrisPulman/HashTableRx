@@ -19,10 +19,10 @@ public class ValueApiTests
     {
         var ht = new HashTableRx(false);
         ht["A"] = 5;
-        await Assert.That(ht.Value<int>("A")).IsEqualTo(5);
+        await Assert.That(ht.Value("A", static value => (int)value!)).IsEqualTo(5);
 
         ht["A.B"] = 6;
-        await Assert.That(ht.Value<int>("A.B")).IsEqualTo(6);
+        await Assert.That(ht.Value("A.B", static value => (int)value!)).IsEqualTo(6);
     }
 
     /// <summary>
@@ -44,5 +44,19 @@ public class ValueApiTests
         var ht = new HashTableRx(false);
         ht["A"] = 42;
         await Assert.That(() => ht.Value("A", "nope")).Throws<InvalidCastException>();
+    }
+
+    /// <summary>
+    /// Converter delegates are validated before receiver and path lookup.
+    /// </summary>
+    [Test]
+    public async Task ConverterDelegatesAreRequired()
+    {
+        IHashTableRx? table = null;
+        Func<object?, int>? converter = null;
+        var concrete = new HashTableRx(false);
+
+        await Assert.That(() => table!.Value<int>(null, converter!)).Throws<ArgumentNullException>();
+        await Assert.That(() => concrete.Observe<int>("A", converter!)).Throws<ArgumentNullException>();
     }
 }
