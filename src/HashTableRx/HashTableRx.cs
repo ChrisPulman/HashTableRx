@@ -341,12 +341,18 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <returns>The value, or null when the path is missing.</returns>
     private object? GetFullName(string? fullName)
     {
-        var names = NormalizePath(fullName)?.Split('.');
-        if (names is null || names.Length == 0)
+        var normalizedName = NormalizePath(fullName);
+        if (normalizedName is null)
         {
             return null;
         }
 
+        if (normalizedName.IndexOf('.') < 0)
+        {
+            return GetBaseValue(normalizedName);
+        }
+
+        var names = normalizedName.Split('.');
         var table = this;
         for (var index = 0; index < names.Length - 1; index++)
         {
@@ -527,6 +533,12 @@ public class HashTableRx : HashTable, IHashTableRx
     /// <param name="value">The value to store.</param>
     private void SetFullNameValue(string fullName, object value)
     {
+        if (fullName.IndexOf('.') < 0)
+        {
+            SetBaseValue(fullName, value);
+            return;
+        }
+
         var names = fullName.Split('.');
         var table = this;
         for (var index = 0; index < names.Length - 1; index++)
