@@ -321,6 +321,7 @@ jobs:
               key="${pair%%=*}"
               value="${pair#*=}"
               value="${value//+/ }"
+              [[ ! "$value" =~ %([^0-9A-Fa-f]|$) ]] && [[ ! "$value" =~ %[0-9A-Fa-f]([^0-9A-Fa-f]|$) ]] || { echo "::error::invalid percent-encoding in otpauth URI"; exit 1; }
               printf -v value '%b' "${value//%/\\x}"
               case "$key" in
                 secret) secret="$value" ;;
@@ -340,19 +341,31 @@ jobs:
               *) echo "::error::unsupported OTP algorithm: $algorithm"; exit 1 ;;
             esac
             algorithm_lc="$(printf '%s' "$algorithm" | tr '[:upper:]' '[:lower:]')"
-            command -v base32 >/dev/null || { echo "::error::base32 utility not found in certum-signer image"; exit 1; }
             command -v openssl >/dev/null || { echo "::error::openssl utility not found in certum-signer image"; exit 1; }
+
+            base32_secret="$(printf '%s' "$secret" | tr -d '[:space:]=')"
+            key_hex=""
+            bits=0
+            acc=0
+            for ((i=0; i<${#base32_secret}; i++)); do
+              char="${base32_secret:$i:1}"
+              case "$char" in
+                [A-Z]) val=$(( $(printf '%d' "'$char") - 65 )) ;;
+                [a-z]) val=$(( $(printf '%d' "'$char") - 97 )) ;;
+                [2-7]) val=$(( $(printf '%d' "'$char") - 24 )) ;;
+                *) echo "::error::otpauth secret contains non-base32 character: $char"; exit 1 ;;
+              esac
+              acc=$(( (acc << 5) | val ))
+              bits=$(( bits + 5 ))
+              while [ "$bits" -ge 8 ]; do
+                bits=$(( bits - 8 ))
+                byte=$(( (acc >> bits) & 255 ))
+                printf -v key_hex '%s%02x' "$key_hex" "$byte"
+              done
+            done
 
             counter=$(( $(date +%s) / period ))
             counter_hex="$(printf '%016x' "$counter")"
-            key_hex="$(
-              printf '%s' "$secret" \
-                | tr -d '[:space:]' \
-                | tr '[:lower:]' '[:upper:]' \
-                | base32 --decode 2>/dev/null \
-                | od -An -tx1 -v \
-                | tr -d ' \n'
-            )"
             [ -n "$key_hex" ] || { echo "::error::failed to decode otpauth secret"; exit 1; }
 
             counter_bin_esc="$(printf '%s' "$counter_hex" | sed 's/../\\x&/g')"
