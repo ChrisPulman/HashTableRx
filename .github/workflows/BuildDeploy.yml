@@ -306,8 +306,123 @@ jobs:
           sleep 20
 
           PYTHON_BIN="$(command -v python3 || command -v python || true)"
-          [ -n "$PYTHON_BIN" ] || { echo "::error::python interpreter not found in certum-signer image"; exit 1; }
-          OTP="$("$PYTHON_BIN" -c 'import os,hmac,hashlib,base64,struct,time;from urllib.parse import urlparse,parse_qs;q=parse_qs(urlparse(os.environ["CERTUM_OTP_URI"]).query);s=q["secret"][0];digits=int(q.get("digits",["6"])[0]);period=int(q.get("period",["30"])[0]);algo={"SHA1":hashlib.sha1,"SHA256":hashlib.sha256,"SHA512":hashlib.sha512}[q.get("algorithm",["SHA1"])[0].upper()];key=base64.b32decode(s+"="*((8-len(s)%8)%8));h=hmac.new(key,struct.pack(">Q",int(time.time()//period)),algo).digest();o=h[-1]&0xF;print(str((int.from_bytes(h[o:o+4],"big")&0x7fffffff)%(10**digits)).zfill(digits))')"
+          if [ -n "$PYTHON_BIN" ]; then
+            OTP="$("$PYTHON_BIN" -c 'import os,hmac,hashlib,base64,struct,time;from urllib.parse import urlparse,parse_qs;q=parse_qs(urlparse(os.environ["CERTUM_OTP_URI"]).query);s=q["secret"][0];digits=int(q.get("digits",["6"])[0]);period=int(q.get("period",["30"])[0]);algo={"SHA1":hashlib.sha1,"SHA256":hashlib.sha256,"SHA512":hashlib.sha512}[q.get("algorithm",["SHA1"])[0].upper()];key=base64.b32decode(s+"="*((8-len(s)%8)%8));h=hmac.new(key,struct.pack(">Q",int(time.time()//period)),algo).digest();o=h[-1]&0xF;print(str((int.from_bytes(h[o:o+4],"big")&0x7fffffff)%(10**digits)).zfill(digits))')"
+          else
+            query="${CERTUM_OTP_URI#*\?}"
+            [ "$query" != "$CERTUM_OTP_URI" ] || { echo "::error::CERTUM_OTP_URI must be a valid otpauth URI with query params"; exit 1; }
+
+            secret=""
+            digits="6"
+            period="30"
+            algorithm="SHA1"
+            IFS='&' read -r -a pairs <<< "$query"
+            for pair in "${pairs[@]}"; do
+              key="${pair%%=*}"
+              value="${pair#*=}"
+              key="${key//+/ }"
+              [[ ! "$key" =~ %[0][0] ]] || { echo "::error::otpauth URI contains unsupported NUL escape"; exit 1; }
+              [[ ! "$key" =~ %([^0-9A-Fa-f]|$) ]] && [[ ! "$key" =~ %[0-9A-Fa-f]([^0-9A-Fa-f]|$) ]] || { echo "::error::invalid percent-encoding in otpauth URI"; exit 1; }
+              printf -v key '%b' "${key//%/\\x}"
+              value="${value//+/ }"
+              [[ ! "$value" =~ %[0][0] ]] || { echo "::error::otpauth URI contains unsupported NUL escape"; exit 1; }
+              [[ ! "$value" =~ %([^0-9A-Fa-f]|$) ]] && [[ ! "$value" =~ %[0-9A-Fa-f]([^0-9A-Fa-f]|$) ]] || { echo "::error::invalid percent-encoding in otpauth URI"; exit 1; }
+              printf -v value '%b' "${value//%/\\x}"
+              case "$key" in
+                secret) secret="$value" ;;
+                digits) digits="$value" ;;
+                period) period="$value" ;;
+                algorithm) algorithm="$value" ;;
+              esac
+            done
+
+            [ -n "$secret" ] || { echo "::error::otpauth URI is missing secret"; exit 1; }
+            [[ "$digits" =~ ^[0-9]+$ ]] && [ "$digits" -ge 6 ] && [ "$digits" -le 8 ] || { echo "::error::unsupported OTP digits: $digits"; exit 1; }
+            [[ "$period" =~ ^[0-9]+$ ]] && [ "$period" -ge 1 ] || { echo "::error::unsupported OTP period: $period"; exit 1; }
+
+            algorithm="$(printf '%s' "$algorithm" | tr '[:lower:]' '[:upper:]')"
+            case "$algorithm" in
+              SHA1|SHA256|SHA512) ;;
+              *) echo "::error::unsupported OTP algorithm: $algorithm"; exit 1 ;;
+            esac
+            algorithm_lc="$(printf '%s' "$algorithm" | tr '[:upper:]' '[:lower:]')"
+            command -v openssl >/dev/null || { echo "::error::openssl utility not found in certum-signer image"; exit 1; }
+            command -v sed >/dev/null || { echo "::error::sed utility not found in certum-signer image"; exit 1; }
+            command -v od >/dev/null || { echo "::error::od utility not found in certum-signer image"; exit 1; }
+            command -v tr >/dev/null || { echo "::error::tr utility not found in certum-signer image"; exit 1; }
+            [[ "$secret" =~ ^[A-Za-z2-7]+={0,6}$ ]] || { echo "::error::otpauth secret has invalid base32 format"; exit 1; }
+
+            base32_secret="${secret%%=*}"
+            base32_padding="${secret#"$base32_secret"}"
+            [ -n "$base32_secret" ] || { echo "::error::otpauth secret cannot be empty"; exit 1; }
+            [[ "$base32_secret" =~ ^[A-Za-z2-7]+$ ]] || { echo "::error::otpauth secret has invalid base32 characters"; exit 1; }
+            [[ "$base32_padding" =~ ^={0,6}$ ]] || { echo "::error::otpauth secret has invalid base32 padding placement"; exit 1; }
+            case $(( ${#base32_secret} % 8 )) in
+              0) required_padding_len=0 ;;
+              2) required_padding_len=6 ;;
+              4) required_padding_len=4 ;;
+              5) required_padding_len=3 ;;
+              7) required_padding_len=1 ;;
+              *) echo "::error::otpauth secret has invalid base32 length"; exit 1 ;;
+            esac
+            if [ "${#base32_padding}" -gt 0 ] && [ "${#base32_padding}" -ne "$required_padding_len" ]; then
+              echo "::error::otpauth secret has mismatched base32 padding length"
+              exit 1
+            esac
+            key_hex=""
+            bits=0
+            acc=0
+            for ((i=0; i<${#base32_secret}; i++)); do
+              char="${base32_secret:$i:1}"
+              case "$char" in
+                [A-Z]) val=$(( $(printf '%d' "'$char") - 65 )) ;;
+                [a-z]) val=$(( $(printf '%d' "'$char") - 97 )) ;;
+                [2-7]) val=$(( $(printf '%d' "'$char") - 24 )) ;;
+                *) echo "::error::otpauth secret contains non-base32 character: $char"; exit 1 ;;
+              esac
+              acc=$(( (acc << 5) | val ))
+              bits=$(( bits + 5 ))
+              while [ "$bits" -ge 8 ]; do
+                bits=$(( bits - 8 ))
+                byte=$(( (acc >> bits) & 255 ))
+                printf -v key_hex '%s%02x' "$key_hex" "$byte"
+              done
+            done
+            [ -n "$key_hex" ] || { echo "::error::failed to decode otpauth secret"; exit 1; }
+
+            counter=$(( $(date +%s) / period ))
+            counter_hex="$(printf '%016x' "$counter")"
+
+            counter_bin_esc="$(printf '%s' "$counter_hex" | sed 's/../\\x&/g')"
+            if ! hmac_hex="$(
+              printf '%b' "$counter_bin_esc" \
+                | openssl dgst -"${algorithm_lc}" -mac HMAC -macopt "hexkey:$key_hex" -binary \
+                | od -An -tx1 -v \
+                | tr -d ' \n'
+            )"; then
+              echo "::error::failed to compute OTP HMAC"
+              exit 1
+            fi
+            [ -n "$hmac_hex" ] || { echo "::error::failed to compute OTP HMAC"; exit 1; }
+            case "$algorithm" in
+              SHA1) expected_hmac_hex_len=40 ;;
+              SHA256) expected_hmac_hex_len=64 ;;
+              SHA512) expected_hmac_hex_len=128 ;;
+            esac
+            [ "${#hmac_hex}" -eq "$expected_hmac_hex_len" ] || { echo "::error::unexpected HMAC length (${#hmac_hex}) for $algorithm"; exit 1; }
+
+            last_byte_hex="${hmac_hex: -2}"
+            offset=$(( (16#$last_byte_hex) & 0x0f ))
+            start=$(( offset * 2 ))
+            chunk="${hmac_hex:$start:8}"
+            [ "${#chunk}" -eq 8 ] || { echo "::error::failed to extract OTP truncation chunk"; exit 1; }
+            modulus=1
+            for ((d=0; d<digits; d++)); do
+              modulus=$(( modulus * 10 ))
+            done
+            code=$(( ((16#$chunk) & 0x7fffffff) % modulus ))
+            printf -v OTP "%0${digits}d" "$code"
+          fi
           echo "::add-mask::$OTP"
 
           WID=""; BX=0; BY=0; BW=0; BH=0
