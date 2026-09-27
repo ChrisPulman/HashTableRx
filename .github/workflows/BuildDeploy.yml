@@ -493,10 +493,13 @@ jobs:
           pkgs=( signed/*.nupkg )
           [ "${#pkgs[@]}" -gt 0 ] || { echo "::error::no packages matched: signed/*.nupkg"; exit 1; }
 
+          echo "::group::sign packages"
+          java -jar "$JAR" --storetype PKCS11 --keystore "$CONF" --storepass "" \
+            --alg SHA-256 --tsmode RFC3161 --tsaurl "http://time.certum.pl" --replace "${pkgs[@]}"
+          echo "::endgroup::"
+
           for pkg in "${pkgs[@]}"; do
-            echo "::group::sign $pkg"
-            java -jar "$JAR" --storetype PKCS11 --keystore "$CONF" --storepass "" \
-              --alg SHA-256 --tsmode RFC3161 --tsaurl "http://time.certum.pl" --replace "$pkg"
+            echo "::group::verify $pkg"
             dotnet nuget verify "$pkg" --all --certificate-fingerprint "$expected_fingerprint" --verbosity detailed
             echo "::endgroup::"
           done
