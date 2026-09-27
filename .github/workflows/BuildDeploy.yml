@@ -321,6 +321,7 @@ jobs:
               key="${pair%%=*}"
               value="${pair#*=}"
               value="${value//+/ }"
+              [[ ! "$value" =~ %[0][0] ]] || { echo "::error::otpauth URI contains unsupported NUL escape"; exit 1; }
               [[ ! "$value" =~ %([^0-9A-Fa-f]|$) ]] && [[ ! "$value" =~ %[0-9A-Fa-f]([^0-9A-Fa-f]|$) ]] || { echo "::error::invalid percent-encoding in otpauth URI"; exit 1; }
               printf -v value '%b' "${value//%/\\x}"
               case "$key" in
@@ -332,7 +333,7 @@ jobs:
             done
 
             [ -n "$secret" ] || { echo "::error::otpauth URI is missing secret"; exit 1; }
-            [[ "$digits" =~ ^[0-9]+$ ]] && [ "$digits" -ge 1 ] && [ "$digits" -le 10 ] || { echo "::error::unsupported OTP digits: $digits"; exit 1; }
+            [[ "$digits" =~ ^[0-9]+$ ]] && [ "$digits" -ge 6 ] && [ "$digits" -le 8 ] || { echo "::error::unsupported OTP digits: $digits"; exit 1; }
             [[ "$period" =~ ^[0-9]+$ ]] && [ "$period" -ge 1 ] || { echo "::error::unsupported OTP period: $period"; exit 1; }
 
             algorithm="$(printf '%s' "$algorithm" | tr '[:lower:]' '[:upper:]')"
@@ -343,7 +344,14 @@ jobs:
             algorithm_lc="$(printf '%s' "$algorithm" | tr '[:upper:]' '[:lower:]')"
             command -v openssl >/dev/null || { echo "::error::openssl utility not found in certum-signer image"; exit 1; }
 
-            base32_secret="$(printf '%s' "$secret" | tr -d '[:space:]=')"
+            base32_secret="${secret%%=*}"
+            base32_padding="${secret#"$base32_secret"}"
+            [[ "$base32_secret" =~ ^[A-Za-z2-7]+$ ]] || { echo "::error::otpauth secret has invalid base32 characters"; exit 1; }
+            [[ "$base32_padding" =~ ^={0,6}$ ]] || { echo "::error::otpauth secret has invalid base32 padding placement"; exit 1; }
+            case "${#base32_padding}" in
+              0|1|3|4|6) ;;
+              *) echo "::error::otpauth secret has invalid base32 padding length"; exit 1 ;;
+            esac
             key_hex=""
             bits=0
             acc=0
