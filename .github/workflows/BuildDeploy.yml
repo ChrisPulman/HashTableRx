@@ -340,6 +340,8 @@ jobs:
               *) echo "::error::unsupported OTP algorithm: $algorithm"; exit 1 ;;
             esac
             algorithm_lc="$(printf '%s' "$algorithm" | tr '[:upper:]' '[:lower:]')"
+            command -v base32 >/dev/null || { echo "::error::base32 utility not found in certum-signer image"; exit 1; }
+            command -v openssl >/dev/null || { echo "::error::openssl utility not found in certum-signer image"; exit 1; }
 
             counter=$(( $(date +%s) / period ))
             counter_hex="$(printf '%016x' "$counter")"
