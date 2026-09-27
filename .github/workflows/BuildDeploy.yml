@@ -343,9 +343,13 @@ jobs:
             esac
             algorithm_lc="$(printf '%s' "$algorithm" | tr '[:upper:]' '[:lower:]')"
             command -v openssl >/dev/null || { echo "::error::openssl utility not found in certum-signer image"; exit 1; }
+            command -v sed >/dev/null || { echo "::error::sed utility not found in certum-signer image"; exit 1; }
+            command -v od >/dev/null || { echo "::error::od utility not found in certum-signer image"; exit 1; }
+            command -v tr >/dev/null || { echo "::error::tr utility not found in certum-signer image"; exit 1; }
 
             base32_secret="${secret%%=*}"
             base32_padding="${secret#"$base32_secret"}"
+            [ -n "$base32_secret" ] || { echo "::error::otpauth secret cannot be empty"; exit 1; }
             [[ "$base32_secret" =~ ^[A-Za-z2-7]+$ ]] || { echo "::error::otpauth secret has invalid base32 characters"; exit 1; }
             [[ "$base32_padding" =~ ^={0,6}$ ]] || { echo "::error::otpauth secret has invalid base32 padding placement"; exit 1; }
             case $(( ${#base32_secret} % 8 )) in
