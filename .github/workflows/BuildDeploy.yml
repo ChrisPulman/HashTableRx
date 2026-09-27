@@ -348,14 +348,17 @@ jobs:
             base32_padding="${secret#"$base32_secret"}"
             [[ "$base32_secret" =~ ^[A-Za-z2-7]+$ ]] || { echo "::error::otpauth secret has invalid base32 characters"; exit 1; }
             [[ "$base32_padding" =~ ^={0,6}$ ]] || { echo "::error::otpauth secret has invalid base32 padding placement"; exit 1; }
-            missing_padding=$(( (8 - (${#base32_secret} % 8)) % 8 ))
-            normalized_padding_len=$(( ${#base32_padding} ))
-            if [ "$normalized_padding_len" -eq 0 ] && [ "$missing_padding" -gt 0 ]; then
-              normalized_padding_len="$missing_padding"
-            fi
-            case "$normalized_padding_len" in
-              0|1|3|4|6) ;;
-              *) echo "::error::otpauth secret has invalid base32 padding length"; exit 1 ;;
+            case $(( ${#base32_secret} % 8 )) in
+              0) required_padding_len=0 ;;
+              2) required_padding_len=6 ;;
+              4) required_padding_len=4 ;;
+              5) required_padding_len=3 ;;
+              7) required_padding_len=1 ;;
+              *) echo "::error::otpauth secret has invalid base32 length"; exit 1 ;;
+            esac
+            if [ "${#base32_padding}" -gt 0 ] && [ "${#base32_padding}" -ne "$required_padding_len" ]; then
+              echo "::error::otpauth secret has mismatched base32 padding length"
+              exit 1
             esac
             key_hex=""
             bits=0
@@ -376,10 +379,10 @@ jobs:
                 printf -v key_hex '%s%02x' "$key_hex" "$byte"
               done
             done
+            [ -n "$key_hex" ] || { echo "::error::failed to decode otpauth secret"; exit 1; }
 
             counter=$(( $(date +%s) / period ))
             counter_hex="$(printf '%016x' "$counter")"
-            [ -n "$key_hex" ] || { echo "::error::failed to decode otpauth secret"; exit 1; }
 
             counter_bin_esc="$(printf '%s' "$counter_hex" | sed 's/../\\x&/g')"
             hmac_hex="$(
