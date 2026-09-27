@@ -306,8 +306,69 @@ jobs:
           sleep 20
 
           PYTHON_BIN="$(command -v python3 || command -v python || true)"
-          [ -n "$PYTHON_BIN" ] || { echo "::error::python interpreter not found in certum-signer image"; exit 1; }
-          OTP="$("$PYTHON_BIN" -c 'import os,hmac,hashlib,base64,struct,time;from urllib.parse import urlparse,parse_qs;q=parse_qs(urlparse(os.environ["CERTUM_OTP_URI"]).query);s=q["secret"][0];digits=int(q.get("digits",["6"])[0]);period=int(q.get("period",["30"])[0]);algo={"SHA1":hashlib.sha1,"SHA256":hashlib.sha256,"SHA512":hashlib.sha512}[q.get("algorithm",["SHA1"])[0].upper()];key=base64.b32decode(s+"="*((8-len(s)%8)%8));h=hmac.new(key,struct.pack(">Q",int(time.time()//period)),algo).digest();o=h[-1]&0xF;print(str((int.from_bytes(h[o:o+4],"big")&0x7fffffff)%(10**digits)).zfill(digits))')"
+          if [ -n "$PYTHON_BIN" ]; then
+            OTP="$("$PYTHON_BIN" -c 'import os,hmac,hashlib,base64,struct,time;from urllib.parse import urlparse,parse_qs;q=parse_qs(urlparse(os.environ["CERTUM_OTP_URI"]).query);s=q["secret"][0];digits=int(q.get("digits",["6"])[0]);period=int(q.get("period",["30"])[0]);algo={"SHA1":hashlib.sha1,"SHA256":hashlib.sha256,"SHA512":hashlib.sha512}[q.get("algorithm",["SHA1"])[0].upper()];key=base64.b32decode(s+"="*((8-len(s)%8)%8));h=hmac.new(key,struct.pack(">Q",int(time.time()//period)),algo).digest();o=h[-1]&0xF;print(str((int.from_bytes(h[o:o+4],"big")&0x7fffffff)%(10**digits)).zfill(digits))')"
+          else
+            query="${CERTUM_OTP_URI#*\?}"
+            [ "$query" != "$CERTUM_OTP_URI" ] || { echo "::error::CERTUM_OTP_URI must be a valid otpauth URI with query params"; exit 1; }
+
+            secret=""
+            digits="6"
+            period="30"
+            algorithm="SHA1"
+            IFS='&' read -r -a pairs <<< "$query"
+            for pair in "${pairs[@]}"; do
+              key="${pair%%=*}"
+              value="${pair#*=}"
+              value="${value//+/ }"
+              printf -v value '%b' "${value//%/\\x}"
+              case "$key" in
+                secret) secret="$value" ;;
+                digits) digits="$value" ;;
+                period) period="$value" ;;
+                algorithm) algorithm="$value" ;;
+              esac
+            done
+
+            [ -n "$secret" ] || { echo "::error::otpauth URI is missing secret"; exit 1; }
+            [[ "$digits" =~ ^[0-9]+$ ]] && [ "$digits" -ge 1 ] && [ "$digits" -le 10 ] || { echo "::error::unsupported OTP digits: $digits"; exit 1; }
+            [[ "$period" =~ ^[0-9]+$ ]] && [ "$period" -ge 1 ] || { echo "::error::unsupported OTP period: $period"; exit 1; }
+
+            algorithm="$(printf '%s' "$algorithm" | tr '[:lower:]' '[:upper:]')"
+            case "$algorithm" in
+              SHA1|SHA256|SHA512) ;;
+              *) echo "::error::unsupported OTP algorithm: $algorithm"; exit 1 ;;
+            esac
+            algorithm_lc="$(printf '%s' "$algorithm" | tr '[:upper:]' '[:lower:]')"
+
+            counter=$(( $(date +%s) / period ))
+            counter_hex="$(printf '%016x' "$counter")"
+            key_hex="$(
+              printf '%s' "$secret" \
+                | tr -d '[:space:]' \
+                | tr '[:lower:]' '[:upper:]' \
+                | base32 --decode 2>/dev/null \
+                | od -An -tx1 -v \
+                | tr -d ' \n'
+            )"
+            [ -n "$key_hex" ] || { echo "::error::failed to decode otpauth secret"; exit 1; }
+
+            counter_bin_esc="$(printf '%s' "$counter_hex" | sed 's/../\\x&/g')"
+            hmac_hex="$(
+              printf '%b' "$counter_bin_esc" \
+                | openssl dgst -"${algorithm_lc}" -mac HMAC -macopt "hexkey:$key_hex" -binary \
+                | od -An -tx1 -v \
+                | tr -d ' \n'
+            )"
+            [ -n "$hmac_hex" ] || { echo "::error::failed to compute OTP HMAC"; exit 1; }
+
+            last_byte_hex="${hmac_hex: -2}"
+            offset=$(( (16#$last_byte_hex) & 0x0f ))
+            start=$(( offset * 2 ))
+            chunk="${hmac_hex:$start:8}"
+            code=$(( ((16#$chunk) & 0x7fffffff) % (10**digits) ))
+            printf -v OTP "%0${digits}d" "$code"
+          fi
           echo "::add-mask::$OTP"
 
           WID=""; BX=0; BY=0; BW=0; BH=0
