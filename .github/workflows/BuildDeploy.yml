@@ -35,7 +35,7 @@ permissions:
   packages: read
 
 env:
-  configuration: Release
+  CONFIGURATION: Release
   solutionFile: HashTableRx.slnx
   solutionFolder: src
   minMajorMinorVersion: '3.1'
@@ -210,10 +210,10 @@ jobs:
       - name: Build
         uses: reactiveui/actions-common/.github/actions/dotnet-build@main
         env:
-          CONFIGURATION: ${{ env.configuration }}
+          CONFIGURATION: ${{ env.CONFIGURATION }}
           MinVerVersionOverride: ${{ steps.minver.outputs.SemVer2 }}
         with:
-          configuration: ${{ env.configuration }}
+          configuration: ${{ env.CONFIGURATION }}
           src-folder: ${{ env.solutionFolder }}
           solution-file: ${{ env.solutionFile }}
           create-packages: 'false'
@@ -223,7 +223,7 @@ jobs:
         working-directory: ${{ env.solutionFolder }}
         env:
           MinVerVersionOverride: ${{ steps.minver.outputs.SemVer2 }}
-        run: dotnet pack --no-restore --configuration "${{ env.configuration }}" ${{ env.solutionFile }} -o "${GITHUB_WORKSPACE}/packages" -p:MinVerVersionOverride="${{ steps.minver.outputs.SemVer2 }}"
+        run: dotnet pack --no-restore --configuration "${{ env.CONFIGURATION }}" ${{ env.solutionFile }} -o "${GITHUB_WORKSPACE}/packages" -p:MinVerVersionOverride="${{ steps.minver.outputs.SemVer2 }}"
 
       - name: Upload unsigned packages
         uses: actions/upload-artifact@v7
