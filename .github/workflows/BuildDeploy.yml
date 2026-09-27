@@ -348,7 +348,12 @@ jobs:
             base32_padding="${secret#"$base32_secret"}"
             [[ "$base32_secret" =~ ^[A-Za-z2-7]+$ ]] || { echo "::error::otpauth secret has invalid base32 characters"; exit 1; }
             [[ "$base32_padding" =~ ^={0,6}$ ]] || { echo "::error::otpauth secret has invalid base32 padding placement"; exit 1; }
-            case "${#base32_padding}" in
+            missing_padding=$(( (8 - (${#base32_secret} % 8)) % 8 ))
+            normalized_padding_len=$(( ${#base32_padding} ))
+            if [ "$normalized_padding_len" -eq 0 ] && [ "$missing_padding" -gt 0 ]; then
+              normalized_padding_len="$missing_padding"
+            fi
+            case "$normalized_padding_len" in
               0|1|3|4|6) ;;
               *) echo "::error::otpauth secret has invalid base32 padding length"; exit 1 ;;
             esac
@@ -384,11 +389,18 @@ jobs:
                 | tr -d ' \n'
             )"
             [ -n "$hmac_hex" ] || { echo "::error::failed to compute OTP HMAC"; exit 1; }
+            case "$algorithm" in
+              SHA1) expected_hmac_hex_len=40 ;;
+              SHA256) expected_hmac_hex_len=64 ;;
+              SHA512) expected_hmac_hex_len=128 ;;
+            esac
+            [ "${#hmac_hex}" -eq "$expected_hmac_hex_len" ] || { echo "::error::unexpected HMAC length (${#hmac_hex}) for $algorithm"; exit 1; }
 
             last_byte_hex="${hmac_hex: -2}"
             offset=$(( (16#$last_byte_hex) & 0x0f ))
             start=$(( offset * 2 ))
             chunk="${hmac_hex:$start:8}"
+            [ "${#chunk}" -eq 8 ] || { echo "::error::failed to extract OTP truncation chunk"; exit 1; }
             modulus=1
             for ((d=0; d<digits; d++)); do
               modulus=$(( modulus * 10 ))
