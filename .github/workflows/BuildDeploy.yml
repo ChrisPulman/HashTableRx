@@ -320,6 +320,10 @@ jobs:
             for pair in "${pairs[@]}"; do
               key="${pair%%=*}"
               value="${pair#*=}"
+              key="${key//+/ }"
+              [[ ! "$key" =~ %[0][0] ]] || { echo "::error::otpauth URI contains unsupported NUL escape"; exit 1; }
+              [[ ! "$key" =~ %([^0-9A-Fa-f]|$) ]] && [[ ! "$key" =~ %[0-9A-Fa-f]([^0-9A-Fa-f]|$) ]] || { echo "::error::invalid percent-encoding in otpauth URI"; exit 1; }
+              printf -v key '%b' "${key//%/\\x}"
               value="${value//+/ }"
               [[ ! "$value" =~ %[0][0] ]] || { echo "::error::otpauth URI contains unsupported NUL escape"; exit 1; }
               [[ ! "$value" =~ %([^0-9A-Fa-f]|$) ]] && [[ ! "$value" =~ %[0-9A-Fa-f]([^0-9A-Fa-f]|$) ]] || { echo "::error::invalid percent-encoding in otpauth URI"; exit 1; }
