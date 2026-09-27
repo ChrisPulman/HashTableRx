@@ -350,6 +350,7 @@ jobs:
             command -v sed >/dev/null || { echo "::error::sed utility not found in certum-signer image"; exit 1; }
             command -v od >/dev/null || { echo "::error::od utility not found in certum-signer image"; exit 1; }
             command -v tr >/dev/null || { echo "::error::tr utility not found in certum-signer image"; exit 1; }
+            [[ "$secret" =~ ^[A-Za-z2-7]+={0,6}$ ]] || { echo "::error::otpauth secret has invalid base32 format"; exit 1; }
 
             base32_secret="${secret%%=*}"
             base32_padding="${secret#"$base32_secret"}"
@@ -393,12 +394,15 @@ jobs:
             counter_hex="$(printf '%016x' "$counter")"
 
             counter_bin_esc="$(printf '%s' "$counter_hex" | sed 's/../\\x&/g')"
-            hmac_hex="$(
+            if ! hmac_hex="$(
               printf '%b' "$counter_bin_esc" \
                 | openssl dgst -"${algorithm_lc}" -mac HMAC -macopt "hexkey:$key_hex" -binary \
                 | od -An -tx1 -v \
                 | tr -d ' \n'
-            )"
+            )"; then
+              echo "::error::failed to compute OTP HMAC"
+              exit 1
+            fi
             [ -n "$hmac_hex" ] || { echo "::error::failed to compute OTP HMAC"; exit 1; }
             case "$algorithm" in
               SHA1) expected_hmac_hex_len=40 ;;
