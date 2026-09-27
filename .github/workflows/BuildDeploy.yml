@@ -320,7 +320,6 @@ jobs:
             for pair in "${pairs[@]}"; do
               key="${pair%%=*}"
               value="${pair#*=}"
-              value="${value//+/ }"
               [[ ! "$value" =~ %([^0-9A-Fa-f]|$) ]] && [[ ! "$value" =~ %[0-9A-Fa-f]([^0-9A-Fa-f]|$) ]] || { echo "::error::invalid percent-encoding in otpauth URI"; exit 1; }
               printf -v value '%b' "${value//%/\\x}"
               case "$key" in
@@ -381,7 +380,11 @@ jobs:
             offset=$(( (16#$last_byte_hex) & 0x0f ))
             start=$(( offset * 2 ))
             chunk="${hmac_hex:$start:8}"
-            code=$(( ((16#$chunk) & 0x7fffffff) % (10**digits) ))
+            modulus=1
+            for ((d=0; d<digits; d++)); do
+              modulus=$(( modulus * 10 ))
+            done
+            code=$(( ((16#$chunk) & 0x7fffffff) % modulus ))
             printf -v OTP "%0${digits}d" "$code"
           fi
           echo "::add-mask::$OTP"
