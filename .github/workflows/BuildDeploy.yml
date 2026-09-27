@@ -320,6 +320,7 @@ jobs:
             for pair in "${pairs[@]}"; do
               key="${pair%%=*}"
               value="${pair#*=}"
+              value="${value//+/ }"
               [[ ! "$value" =~ %([^0-9A-Fa-f]|$) ]] && [[ ! "$value" =~ %[0-9A-Fa-f]([^0-9A-Fa-f]|$) ]] || { echo "::error::invalid percent-encoding in otpauth URI"; exit 1; }
               printf -v value '%b' "${value//%/\\x}"
               case "$key" in
