@@ -368,7 +368,7 @@ jobs:
             if [ "${#base32_padding}" -gt 0 ] && [ "${#base32_padding}" -ne "$required_padding_len" ]; then
               echo "::error::otpauth secret has mismatched base32 padding length"
               exit 1
-            esac
+            fi
             key_hex=""
             bits=0
             acc=0
