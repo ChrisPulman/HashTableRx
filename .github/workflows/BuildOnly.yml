@@ -54,7 +54,11 @@ jobs:
       - name: Verify 100% coverage
         shell: pwsh
         run: |
-          $packages = Get-ChildItem ./src/TestResults -Filter *.cobertura.xml | ForEach-Object {
+          $reports = @(Get-ChildItem ./src/TestResults -Recurse -Filter *.cobertura.xml)
+          if ($reports.Count -eq 0) {
+            throw "No Cobertura coverage reports were produced."
+          }
+          $packages = $reports | ForEach-Object {
             ([xml](Get-Content $_.FullName)).coverage.packages.package
           }
           $expected = @('HashTableRx', 'HashTableRx.Reactive')
