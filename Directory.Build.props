@@ -6,11 +6,9 @@
     <Description>A Reactive Hash Table Library</Description>
     <Copyright>Copyright © https://github.com/ChrisPulman $([System.DateTime]::Now.ToString(yyyy))</Copyright>
     <IsTestProject>$(MSBuildProjectName.Contains('Tests'))</IsTestProject>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <LangVersion>preview</LangVersion>
-    <Configuration>$(TargetFramework)</Configuration>
     <Company>ChrisPulman</Company>
-    <NoWarn>CS1591</NoWarn>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <PackageIcon>icon.png</PackageIcon>
     <PackageReleaseNotes>Compatability with Net 8 / 9 / 10/ 11 and net4.6.2 / net4.7.2 / net4.8 / net4.8.1</PackageReleaseNotes>
