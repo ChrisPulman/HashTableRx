@@ -1,62 +1,63 @@
-// Copyright (c) Chris Pulman. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
+// Copyright (c) 2019-2026 Chris Pulman and contributors. All rights reserved.
+// Chris Pulman and contributors licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for full license information.
 using TUnit.Assertions;
 using TUnit.Core;
 
 namespace CP.Collections.Tests;
 
-/// <summary>
-/// Tests for Value API: get and set, and error conditions.
-/// </summary>
+/// <summary>Tests for Value API: get and set, and error conditions.</summary>
 public class ValueApiTests
 {
-    /// <summary>
-    /// Setting and getting values works for root and nested paths.
-    /// </summary>
+    /// <summary>Defines the InitialValue test input.</summary>
+    private const int InitialValue = 5;
+
+    /// <summary>Defines the NestedValue test input.</summary>
+    private const int NestedValue = 6;
+
+    /// <summary>Defines the SampleValue test input.</summary>
+    private const int SampleValue = 42;
+
+    /// <summary>Setting and getting values works for root and nested paths.</summary>
+    /// <returns>A task representing the asynchronous test.</returns>
     [Test]
     public async Task ValueSetAndGetWorks()
     {
-        var ht = new HashTableRx(false);
-        ht["A"] = 5;
-        await Assert.That(ht.Value("A", static value => (int)value!)).IsEqualTo(5);
-
-        ht["A.B"] = 6;
-        await Assert.That(ht.Value("A.B", static value => (int)value!)).IsEqualTo(6);
+        using var ht = new HashTableRx(false);
+        ht["A"] = InitialValue;
+        await Assert.That(ht.Value("A", static value => (int)value!)).IsEqualTo(InitialValue);
+        ht["A.B"] = NestedValue;
+        await Assert.That(ht.Value("A.B", static value => (int)value!)).IsEqualTo(NestedValue);
     }
 
-    /// <summary>
-    /// Setting a non-existent variable throws InvalidVariableException.
-    /// </summary>
+    /// <summary>Setting a non-existent variable throws InvalidVariableException.</summary>
+    /// <returns>A task representing the asynchronous test.</returns>
     [Test]
     public async Task ValueThrowsOnInvalidVariable()
     {
-        var ht = new HashTableRx(false);
+        using var ht = new HashTableRx(false);
         await Assert.That(() => ht.Value("NotExisting", 1)).Throws<InvalidVariableException>();
     }
 
-    /// <summary>
-    /// Setting a value with mismatched type throws InvalidCastException.
-    /// </summary>
+    /// <summary>Setting a value with mismatched type throws InvalidCastException.</summary>
+    /// <returns>A task representing the asynchronous test.</returns>
     [Test]
     public async Task ValueThrowsOnInvalidCast()
     {
-        var ht = new HashTableRx(false);
-        ht["A"] = 42;
+        using var ht = new HashTableRx(false);
+        ht["A"] = SampleValue;
         await Assert.That(() => ht.Value("A", "nope")).Throws<InvalidCastException>();
     }
 
-    /// <summary>
-    /// Converter delegates are validated before receiver and path lookup.
-    /// </summary>
+    /// <summary>Converter delegates are validated before receiver and path lookup.</summary>
+    /// <returns>A task representing the asynchronous test.</returns>
     [Test]
     public async Task ConverterDelegatesAreRequired()
     {
         IHashTableRx? table = null;
         Func<object?, int>? converter = null;
-        var concrete = new HashTableRx(false);
-
-        await Assert.That(() => table!.Value<int>(null, converter!)).Throws<ArgumentNullException>();
-        await Assert.That(() => concrete.Observe<int>("A", converter!)).Throws<ArgumentNullException>();
+        using var concrete = new HashTableRx(false);
+        await Assert.That(() => table!.Value(null, converter!)).Throws<ArgumentNullException>();
+        await Assert.That(() => concrete.Observe("A", converter!)).Throws<ArgumentNullException>();
     }
 }

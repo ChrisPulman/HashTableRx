@@ -1,105 +1,98 @@
-// Copyright (c) Chris Pulman. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
+// Copyright (c) 2019-2026 Chris Pulman and contributors. All rights reserved.
+// Chris Pulman and contributors licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for full license information.
 using ReactiveUI.Primitives.Disposables;
 using TUnit.Assertions;
 using TUnit.Core;
 
 namespace CP.Collections.Tests;
 
-/// <summary>
-/// UnitTest1.
-/// </summary>
+/// <summary>Verifies calibration and temperature access through the reactive table APIs.</summary>
 public class HashTableRxTest
 {
-    /// <summary>
-    /// Test1s this instance.
-    /// </summary>
+    /// <summary>Defines the CalibrationDataValidPath test input.</summary>
+    private const string CalibrationDataValidPath = "CalibrationDataValid";
+
+    /// <summary>Defines the CasingTemperaturePVValuePath test input.</summary>
+    private const string CasingTemperaturePVValuePath = "Casing.Temperature.PV.Value";
+
+    /// <summary>Verifies that indexer reads return the stored calibration and temperature values.</summary>
+    /// <returns>A task representing the asynchronous test.</returns>
     [Test]
     public async Task HashTableRxCanReadValuesDirectly()
     {
-        var htRx = HashTableRxFixture.CreateHashTable();
-        htRx["CalibrationDataValid"] = false;
-        var t = (bool?)htRx["CalibrationDataValid"];
+        using var table = HashTableRxFixture.CreateHashTable();
+        table[CalibrationDataValidPath] = false;
+        var t = (bool?)table[CalibrationDataValidPath];
         await Assert.That(t).IsFalse();
-
-        htRx["Casing.Temperature.PV.Value"] = 0.0f;
-        var t2 = (float?)htRx["Casing.Temperature.PV.Value"];
-        await Assert.That(t2).IsEqualTo(0.0f);
+        table[CasingTemperaturePVValuePath] = 0.0F;
+        var t2 = (float?)table[CasingTemperaturePVValuePath];
+        await Assert.That(t2).IsEqualTo(0.0F);
     }
 
-    /// <summary>
-    /// Hashes the table rx can write values.
-    /// </summary>
+    /// <summary>Verifies that indexer writes replace calibration and temperature values.</summary>
+    /// <returns>A task representing the asynchronous test.</returns>
     [Test]
     public async Task HashTableRxCanWriteValuesDirectly()
     {
-        var htRx = HashTableRxFixture.CreateHashTable();
-        htRx["CalibrationDataValid"] = true;
-        var t = (bool?)htRx["CalibrationDataValid"];
+        using var table = HashTableRxFixture.CreateHashTable();
+        table[CalibrationDataValidPath] = true;
+        var t = (bool?)table[CalibrationDataValidPath];
         await Assert.That(t).IsTrue();
-
-        htRx["Casing.Temperature.PV.Value"] = 1.0f;
-        var t2 = (float?)htRx["Casing.Temperature.PV.Value"];
-        await Assert.That(t2).IsEqualTo(1.0f);
+        table[CasingTemperaturePVValuePath] = 1.0F;
+        var t2 = (float?)table[CasingTemperaturePVValuePath];
+        await Assert.That(t2).IsEqualTo(1.0F);
     }
 
-    /// <summary>
-    /// Hashes the table rx can read values from observable.
-    /// </summary>
+    /// <summary>Verifies that subscriptions receive calibration and temperature changes.</summary>
+    /// <returns>A task representing the asynchronous test.</returns>
     [Test]
     public async Task HashTableRxCanReadValuesFromObservable()
     {
-        var htRx = HashTableRxFixture.CreateHashTable();
-        var disposables = new MultipleDisposable();
-        htRx["CalibrationDataValid"] = false;
-        var t = (bool?)htRx["CalibrationDataValid"];
+        using var table = HashTableRxFixture.CreateHashTable();
+        using var disposables = new MultipleDisposable();
+        table[CalibrationDataValidPath] = false;
+        var t = (bool?)table[CalibrationDataValidPath];
         await Assert.That(t).IsFalse();
         var boolResullt = default(bool?);
-        disposables.Add(htRx.Observe("CalibrationDataValid", static value => (bool)value!).Subscribe(new TestObserver<bool>(x => boolResullt = x)));
-        htRx["CalibrationDataValid"] = true;
+        disposables.Add(table.Observe(CalibrationDataValidPath, static value => (bool)value!).Subscribe(new TestObserver<bool>(x => boolResullt = x)));
+        table[CalibrationDataValidPath] = true;
         await Assert.That(boolResullt).IsTrue();
-
         var floatResult = default(float?);
-        htRx["Casing.Temperature.PV.Value"] = 0.0f;
-        var t2 = (float?)htRx["Casing.Temperature.PV.Value"];
-        await Assert.That(t2).IsEqualTo(0.0f);
-        disposables.Add(htRx.Observe("Casing.Temperature.PV.Value", static value => (float)value!).Subscribe(new TestObserver<float>(x => floatResult = x)));
-        htRx["Casing.Temperature.PV.Value"] = 1.0f;
-        await Assert.That(floatResult).IsEqualTo(1.0f);
-
+        table[CasingTemperaturePVValuePath] = 0.0F;
+        var t2 = (float?)table[CasingTemperaturePVValuePath];
+        await Assert.That(t2).IsEqualTo(0.0F);
+        disposables.Add(table.Observe(CasingTemperaturePVValuePath, static value => (float)value!).Subscribe(new TestObserver<float>(x => floatResult = x)));
+        table[CasingTemperaturePVValuePath] = 1.0F;
+        await Assert.That(floatResult).IsEqualTo(1.0F);
         disposables.Dispose();
     }
 
-    /// <summary>
-    /// Hashes the table rx can read values.
-    /// </summary>
+    /// <summary>Verifies that value conversion returns the stored calibration and temperature values.</summary>
+    /// <returns>A task representing the asynchronous test.</returns>
     [Test]
     public async Task HashTableRxCanReadValues()
     {
-        var htRx = HashTableRxFixture.CreateHashTable();
-        htRx["CalibrationDataValid"] = false;
-        var t = htRx.Value("CalibrationDataValid", static value => (bool)value!);
+        using var table = HashTableRxFixture.CreateHashTable();
+        table[CalibrationDataValidPath] = false;
+        var t = table.Value(CalibrationDataValidPath, static value => (bool)value!);
         await Assert.That(t).IsFalse();
-
-        htRx["Casing.Temperature.PV.Value"] = 0.0f;
-        var t2 = htRx.Value("Casing.Temperature.PV.Value", static value => (float)value!);
-        await Assert.That(t2).IsEqualTo(0.0f);
+        table[CasingTemperaturePVValuePath] = 0.0F;
+        var t2 = table.Value(CasingTemperaturePVValuePath, static value => (float)value!);
+        await Assert.That(t2).IsEqualTo(0.0F);
     }
 
-    /// <summary>
-    /// Hashes the table rx can write values.
-    /// </summary>
+    /// <summary>Verifies that value setters replace calibration and temperature values.</summary>
+    /// <returns>A task representing the asynchronous test.</returns>
     [Test]
     public async Task HashTableRxCanWriteValues()
     {
-        var htRx = HashTableRxFixture.CreateHashTable();
-        htRx.Value("CalibrationDataValid", true);
-        var t = htRx.Value("CalibrationDataValid", static value => (bool)value!);
+        using var table = HashTableRxFixture.CreateHashTable();
+        _ = table.Value(CalibrationDataValidPath, true);
+        var t = table.Value(CalibrationDataValidPath, static value => (bool)value!);
         await Assert.That(t).IsTrue();
-
-        htRx.Value("Casing.Temperature.PV.Value", 1.0f);
-        var t2 = htRx.Value("Casing.Temperature.PV.Value", static value => (float)value!);
-        await Assert.That(t2).IsEqualTo(1.0f);
+        _ = table.Value(CasingTemperaturePVValuePath, 1.0F);
+        var t2 = table.Value(CasingTemperaturePVValuePath, static value => (float)value!);
+        await Assert.That(t2).IsEqualTo(1.0F);
     }
 }

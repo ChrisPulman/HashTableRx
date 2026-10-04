@@ -41,12 +41,21 @@ At the time of this source audit, the product packages use `ReactiveUI.Primitive
 | --- | --- | --- |
 | `src/HashTableRx` | Builds the `HashTableRx` package in `CP.Collections`. | All product frameworks listed above |
 | `src/HashTableRx.Reactive` | Links the same production source under `CP.Collections.Reactive` and builds the `HashTableRx.Reactive` package. | All product frameworks listed above |
-| `src/HashTableRx.Tests` | TUnit/Microsoft Testing Platform tests for the normal package. | `net9.0` |
-| `src/HashTableRx.Reactive.Tests` | The same TUnit behavior suite compiled against the reactive package. | `net9.0` |
+| `src/HashTableRx.Tests` | TUnit/Microsoft Testing Platform tests for the normal package. | `net8.0`, `net9.0`, `net10.0`, `net11.0` |
+| `src/HashTableRx.Reactive.Tests` | The same TUnit behavior suite compiled against the reactive package. | `net8.0`, `net9.0`, `net10.0`, `net11.0` |
 | `src/BenchmarkSuite1` | BenchmarkDotNet performance harness; not a distributable package. | `net10.0` |
 | `build/_build.csproj` | Nuke build orchestration; not a distributable package. | `net10.0` |
 
-The repository centrally enables Roslynator plus StyleSharp, PerformanceSharp, and SecuritySharp analyzers. A strict validation build treats diagnostics as errors; the two test projects use TUnit assertions and Microsoft Testing Platform.
+The repository centrally enables Roslynator plus StyleSharp, PerformanceSharp, and SecuritySharp analyzers, including the test and benchmark projects. Builds treat warnings as errors; the two test projects use TUnit assertions and Microsoft Testing Platform.
+
+Build the complete solution, including the NUKE tooling, and run the behavior suite on every supported modern .NET target:
+
+```powershell
+dotnet build src\HashTableRx.slnx --configuration Release
+dotnet test --solution src\HashTableRx.slnx --configuration Release --coverage --coverage-settings src\coverage.settings.xml --coverage-output-format cobertura --results-directory src\TestResults
+```
+
+The coverage settings include both production libraries and exclude test assemblies. CI checks every Cobertura report for 100% line and branch coverage. The .NET Framework targets are built as part of the solution; TUnit executes on .NET 8 and later.
 
 ## Core Concepts
 
